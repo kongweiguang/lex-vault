@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LexVault",
+  "version": "0.1.5",
+  "identifier": "io.github.kongweiguang.desktop.lex-vault",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Lex Vault",
+        "width": 800,
+        "height": 600,
+        "maximized": false,
+        "theme": "Light",
+        "visible": false,
+        "hiddenTitle": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": [
+      "nsis"
+    ],
+    "resources": [
+      "resources/binaries",
+      "resources/wechat"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://law.ktestai.cn/lex-vault/app/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ1NjI1MzhBNzRERDA2QQpSV1JxMEUybk9DVldCRURjZlZzZDJhMHpwOUpOSkM0UnFiZTFBeDlXcWZXMk43TTAvRzZPN1RUbgo=",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

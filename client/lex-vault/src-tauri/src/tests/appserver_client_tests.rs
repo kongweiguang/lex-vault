@@ -23,10 +23,11 @@ use super::model_config::{
 };
 use super::params::{
     experimental_feature_enablement_params, legal_turn_start_params, legal_user_text,
-    thread_compact_start_params, thread_list_params, thread_read_params, thread_resume_params,
-    thread_start_params, turn_interrupt_params, APPROVAL_POLICY, COLLABORATION_MODE_DEFAULT,
-    COLLABORATION_MODE_DEFAULT_MODEL, COLLABORATION_MODE_DEFAULT_REASONING_EFFORT,
-    THREAD_SANDBOX_MODE, TURN_SANDBOX_POLICY_TYPE,
+    plugin_enablement_write_params, thread_compact_start_params, thread_list_params,
+    thread_read_params, thread_resume_params, thread_start_params, turn_interrupt_params,
+    APPROVAL_POLICY, COLLABORATION_MODE_DEFAULT, COLLABORATION_MODE_DEFAULT_MODEL,
+    COLLABORATION_MODE_DEFAULT_REASONING_EFFORT, THREAD_SANDBOX_MODE,
+    TURN_SANDBOX_POLICY_TYPE,
 };
 use super::protocol::{
     StartLegalTurnAttachment, StartLegalTurnPluginMention, StartLegalTurnRequest,
@@ -472,4 +473,18 @@ fn experimental_feature_enablement_params_use_enablement_map() {
     let params = experimental_feature_enablement_params("plugins", true);
 
     assert_eq!(params["enablement"]["plugins"], true);
+}
+
+/// 验证插件启用配置通过 app-server `config/batchWrite` 的 upsert 协议表达。
+#[test]
+fn plugin_enablement_write_params_use_plugins_upsert() {
+    let params = plugin_enablement_write_params("documents@openai-primary-runtime".to_string(), true);
+
+    assert_eq!(params["edits"][0]["keyPath"], "plugins");
+    assert_eq!(
+        params["edits"][0]["value"]["documents@openai-primary-runtime"]["enabled"],
+        true
+    );
+    assert_eq!(params["edits"][0]["mergeStrategy"], "upsert");
+    assert_eq!(params["reloadUserConfig"], true);
 }

@@ -3,7 +3,6 @@ import {
   Blocks,
   LayoutGrid,
   LoaderCircle,
-  Plus,
   PlugZap,
   Search,
   Sparkles,
@@ -18,7 +17,6 @@ import {
   type ToolsWorkspaceView,
 } from "@/features/billing/billing-helpers";
 import { cn } from "@/lib/utils";
-import { showPrompt } from "@/services/dialog-service";
 import type { CodexPluginListResult } from "@/types/codex";
 import type { CaseRecord } from "@/types/domain";
 import {
@@ -124,7 +122,8 @@ export function ExtensionsPanel({
   isPluginLoading = false,
   pluginNotice,
   onRefreshPlugins,
-  onCreatePlugin,
+  onInstallPlugin,
+  onSetPluginEnabled,
 }: {
   /** 当前扩展页模式。 */
   mode: ExtensionPanelMode;
@@ -138,19 +137,16 @@ export function ExtensionsPanel({
   pluginNotice?: string | null;
   /** 刷新插件列表。 */
   onRefreshPlugins?: () => Promise<void>;
-  /** 发起创建插件任务。 */
-  onCreatePlugin?: (request: string) => Promise<void>;
-  /** 添加插件市场。 */
-  onAddMarketplace?: (source: string) => Promise<void>;
-  /** 移除插件市场。 */
-  onRemoveMarketplace?: (name: string) => Promise<void>;
-  /** 升级插件市场。 */
-  onUpgradeMarketplace?: (marketplaceName?: string) => Promise<void>;
+  /** 安装单个插件。 */
+  onInstallPlugin?: (marketplacePath: string, pluginName: string) => Promise<void>;
+  /** 切换插件启用状态。 */
+  onSetPluginEnabled?: (pluginId: string, enabled: boolean) => Promise<void>;
 }) {
   const activeGroup = extensionGroups.工具;
   const Icon = activeGroup.icon;
   const [toolQuery, setToolQuery] = useState("");
   const [pluginQuery, setPluginQuery] = useState("");
+  const [pluginActionKey, setPluginActionKey] = useState<string | null>(null);
   const [toolsWorkspaceView, setToolsWorkspaceView] = useState<ToolsWorkspaceView>(createToolsWorkspaceHomeView);
 
   /** 工具搜索统一按名称、分类、说明、场景和关键字做模糊过滤。 */
@@ -259,21 +255,28 @@ export function ExtensionsPanel({
     [filteredPlugins],
   );
 
-  async function handleCreatePlugin() {
-    const request = (await showPrompt({
-      title: "创建插件",
-      message: "描述你要创建的插件名称和用途，小隐会跳转到对话页并调用 plugin-creator 帮你生成脚手架。",
-      description: "默认会按 home-local 方式创建到 ~/plugins，并写入 ~/.agents/plugins/marketplace.json。",
-      inputLabel: "插件需求",
-      placeholder: "例如：创建一个用于案件材料批量归档的本地插件",
-      confirmText: "开始创建",
-      cancelText: "取消",
-      intent: "primary",
-    }))?.trim();
-    if (!request) {
+  async function handleInstallPlugin(marketplacePath: string, pluginName: string, pluginId: string) {
+    if (!onInstallPlugin) {
       return;
     }
-    await onCreatePlugin?.(request);
+    setPluginActionKey(`${pluginId}:install`);
+    try {
+      await onInstallPlugin(marketplacePath, pluginName);
+    } finally {
+      setPluginActionKey(null);
+    }
+  }
+
+  async function handleSetPluginEnabled(pluginId: string, enabled: boolean) {
+    if (!onSetPluginEnabled) {
+      return;
+    }
+    setPluginActionKey(`${pluginId}:enable`);
+    try {
+      await onSetPluginEnabled(pluginId, enabled);
+    } finally {
+      setPluginActionKey(null);
+    }
   }
 
   if (mode === "工具" && toolsWorkspaceView.page === "detail" && toolsWorkspaceView.toolKey === "billing") {
@@ -303,14 +306,6 @@ export function ExtensionsPanel({
               </p>
             </div>
             </div>
-            {mode === "插件" ? (
-              <div className="flex items-center gap-2">
-                <Button disabled={isPluginLoading} onClick={() => void handleCreatePlugin()} type="button">
-                  <Plus />
-                  创建插件
-                </Button>
-              </div>
-            ) : null}
           </div>
         </header>
 
@@ -566,6 +561,32 @@ export function ExtensionsPanel({
                                       <p className="mt-2 text-xs leading-5 text-[color:var(--color-muted-foreground)]">
                                         状态：{plugin.availability || "AVAILABLE"}
                                       </p>
+                                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                                        <Button
+                                          disabled={pluginActionKey !== null || plugin.installed}
+                                          onClick={() => void handleInstallPlugin(plugin.marketplacePath, plugin.pluginName, plugin.id)}
+                                          size="sm"
+                                          type="button"
+                                          variant={plugin.installed ? "secondary" : "default"}
+                                        >
+                                          {pluginActionKey === `${plugin.id}:install`
+                                            ? <LoaderCircle className="animate-spin" />
+                                            : null}
+                                          {plugin.installed ? "已安装" : "安装"}
+                                        </Button>
+                                        <Button
+                                          disabled={pluginActionKey !== null}
+                                          onClick={() => void handleSetPluginEnabled(plugin.id, !plugin.enabled)}
+                                          size="sm"
+                                          type="button"
+                                          variant={plugin.enabled ? "outline" : "secondary"}
+                                        >
+                                          {pluginActionKey === `${plugin.id}:enable`
+                                            ? <LoaderCircle className="animate-spin" />
+                                            : null}
+                                          {plugin.enabled ? "停用" : "启用"}
+                                        </Button>
+                                      </div>
                                     </div>
                                   </article>
                                 ))}

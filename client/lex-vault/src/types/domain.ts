@@ -698,7 +698,7 @@ export type FileContent = {
   /** 文件大小，单位为字节。 */
   size?: number;
   /** 后端判定的预览类型，前端按该类型决定展示方式。 */
-  previewKind: "text" | "markdown" | "image" | "pdf" | "audio" | "video" | "archive" | "docx" | "external";
+  previewKind: "text" | "markdown" | "image" | "pdf" | "audio" | "video" | "archive" | "jit-viewer" | "external";
   /** 是否为可直接预览的文本文件。 */
   text: boolean;
   /** 可通过 Tauri asset protocol 读取的真实文件路径。 */
@@ -708,7 +708,7 @@ export type FileContent = {
   /** 当前只能走系统默认程序打开时的原因说明。 */
   externalReason?: string;
   /** 本次预览实际使用的转换器类型。 */
-  converter: "docx-preview" | "none";
+  converter: "jit-viewer" | "none";
 };
 
 /** 会话绑定的后端 Agent 上下文。 */

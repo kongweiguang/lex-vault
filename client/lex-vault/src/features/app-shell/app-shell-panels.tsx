@@ -252,16 +252,12 @@ type ExtensionsWorkspaceSectionProps = {
   isPluginLoading: boolean;
   /** 当前插件页提示消息。 */
   pluginNotice: string | null;
-  /** 发起创建插件任务。 */
-  onCreatePlugin: (request: string) => Promise<void>;
   /** 刷新插件列表。 */
   onRefreshPlugins: () => Promise<void>;
-  /** 添加插件市场。 */
-  onAddMarketplace: (source: string) => Promise<void>;
-  /** 移除插件市场。 */
-  onRemoveMarketplace: (name: string) => Promise<void>;
-  /** 升级插件市场。 */
-  onUpgradeMarketplace: (marketplaceName?: string) => Promise<void>;
+  /** 安装单个插件。 */
+  onInstallPlugin: (marketplacePath: string, pluginName: string) => Promise<void>;
+  /** 切换插件启用状态。 */
+  onSetPluginEnabled: (pluginId: string, enabled: boolean) => Promise<void>;
 };
 
 /** 扩展页装配入口，按左侧导航模式展示工具或插件页面。 */
@@ -271,22 +267,18 @@ export function ExtensionsWorkspaceSection({
   pluginList,
   isPluginLoading,
   pluginNotice,
-  onCreatePlugin,
   onRefreshPlugins,
-  onAddMarketplace,
-  onRemoveMarketplace,
-  onUpgradeMarketplace,
+  onInstallPlugin,
+  onSetPluginEnabled,
 }: ExtensionsWorkspaceSectionProps) {
   return (
     <ExtensionsPanel
       cases={cases}
       isPluginLoading={isPluginLoading}
       mode={mode}
-      onAddMarketplace={onAddMarketplace}
-      onCreatePlugin={onCreatePlugin}
+      onInstallPlugin={onInstallPlugin}
       onRefreshPlugins={onRefreshPlugins}
-      onRemoveMarketplace={onRemoveMarketplace}
-      onUpgradeMarketplace={onUpgradeMarketplace}
+      onSetPluginEnabled={onSetPluginEnabled}
       pluginList={pluginList}
       pluginNotice={pluginNotice}
     />

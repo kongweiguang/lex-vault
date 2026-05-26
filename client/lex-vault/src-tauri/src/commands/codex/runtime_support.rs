@@ -40,12 +40,12 @@ const PREINSTALLED_PLUGINS_FINGERPRINT_KEY_PATH: &str =
 /// 旧版本离线 marketplace 使用过的非官方名称，启动时需要自动迁移清理。
 const LEGACY_PREINSTALLED_MARKETPLACE_NAMES: [&str; 1] = ["kong"];
 
-/// 资源目录中一个待预装的 marketplace 摘要。
+/// runtime 目录中一个待预装的 marketplace 摘要。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BundledPluginMarketplace {
     /// marketplace 稳定名称。
     pub name: String,
-    /// 复制到当前 profile 后的 marketplace 根目录。
+    /// runtime 内的 marketplace 根目录。
     pub root: PathBuf,
     /// marketplace 中需要预装的插件目录名列表。
     pub plugin_names: Vec<String>,
@@ -142,7 +142,7 @@ pub(crate) fn cleanup_legacy_builtin_skills(codex_home: &Path) -> Result<(), App
     Ok(())
 }
 
-/// 将 runtime zip 中的 marketplace 复制到当前 profile，供后续离线预装使用。
+/// 读取 runtime zip 中已解压的 marketplace，供后续离线预装使用。
 pub(crate) fn install_builtin_plugin_marketplaces(
     codex_home: &Path,
 ) -> Result<Vec<BundledPluginMarketplace>, AppError> {
@@ -329,6 +329,28 @@ pub(crate) fn ensure_builtin_local_mcp_server_config(
     ensure_builtin_local_mcp_server_config_with_url(codex_home, server_url)
 }
 
+/// 读取并解析当前 profile 的 `config.toml`；若已有内容无法解析，则直接报错，避免后续把原文件覆盖成空文档。
+fn load_existing_config_document(
+    config_path: &Path,
+    error_code: &str,
+    read_title: &str,
+    parse_title: &str,
+) -> Result<DocumentMut, AppError> {
+    if !config_path.is_file() {
+        return Ok(DocumentMut::new());
+    }
+    let raw = std::fs::read_to_string(config_path)
+        .map_err(|err| AppError::new(error_code, read_title, err.to_string(), true))?;
+    raw.parse::<DocumentMut>().map_err(|err| {
+        AppError::new(
+            error_code,
+            parse_title,
+            format!("{}: {err}", config_path.display()),
+            true,
+        )
+    })
+}
+
 pub(crate) fn validate_workspace(cwd: &str) -> Result<(), AppError> {
     if cwd.trim().is_empty() || !Path::new(cwd).is_dir() {
         return Err(AppError::new(
@@ -347,19 +369,12 @@ fn ensure_builtin_local_mcp_server_config_with_url(
     server_url: &str,
 ) -> Result<(), AppError> {
     let config_path = codex_home.join("config.toml");
-    let raw = if config_path.is_file() {
-        std::fs::read_to_string(&config_path).map_err(|err| {
-            AppError::new(
-                "CODEX_RUNTIME_START_FAILED",
-                "读取 Codex 配置文件失败",
-                err.to_string(),
-                true,
-            )
-        })?
-    } else {
-        String::new()
-    };
-    let mut document = raw.parse::<DocumentMut>().unwrap_or_default();
+    let mut document = load_existing_config_document(
+        &config_path,
+        "CODEX_RUNTIME_START_FAILED",
+        "读取 Codex 配置文件失败",
+        "解析 Codex 配置文件失败",
+    )?;
     let root = document.as_table_mut();
     if !root.contains_key("mcp_servers") || !matches!(root["mcp_servers"], Item::Table(_)) {
         root["mcp_servers"] = Item::Table(Table::new());
@@ -447,23 +462,14 @@ pub(crate) fn emit_error(message: String) -> AppError {
     )
 }
 
-/// 安装测试或运行时传入的本地 marketplace 目录。
+/// 读取测试或运行时传入的本地 marketplace 目录。
 pub(crate) fn install_builtin_plugin_marketplaces_from(
     resources_dir: &Path,
-    codex_home: &Path,
+    _codex_home: &Path,
 ) -> Result<Vec<BundledPluginMarketplace>, AppError> {
     if !resources_dir.is_dir() {
         return Ok(Vec::new());
     }
-    let target_root = codex_home.join(CODEX_MARKETPLACES_DIRECTORY);
-    std::fs::create_dir_all(&target_root).map_err(|err| {
-        AppError::new(
-            "PLUGIN_INSTALL_FAILED",
-            "创建预装插件目录失败",
-            err.to_string(),
-            true,
-        )
-    })?;
 
     let mut marketplaces = Vec::new();
     let entries = std::fs::read_dir(resources_dir).map_err(|err| {
@@ -488,56 +494,10 @@ pub(crate) fn install_builtin_plugin_marketplaces_from(
             continue;
         }
         let manifest = read_marketplace_manifest(&source_path)?;
-        let target_path = target_root.join(&manifest.name);
         if manifest.plugins.is_empty() {
-            if target_path.exists() {
-                std::fs::remove_dir_all(&target_path).map_err(|err| {
-                    AppError::new(
-                        "PLUGIN_INSTALL_FAILED",
-                        "清理空预装插件市场失败",
-                        err.to_string(),
-                        true,
-                    )
-                })?;
-            }
             continue;
         }
-        if target_path.exists() && marketplace_directories_match(&source_path, &target_path)? {
-            let canonical_target = std::fs::canonicalize(&target_path).unwrap_or(target_path);
-            marketplaces.push(BundledPluginMarketplace {
-                name: manifest.name,
-                root: canonical_target,
-                plugin_names: manifest
-                    .plugins
-                    .into_iter()
-                    .map(|plugin| plugin.name)
-                    .collect(),
-            });
-            continue;
-        }
-        if target_path.exists() {
-            std::fs::remove_dir_all(&target_path).map_err(|err| {
-                AppError::new(
-                    "PLUGIN_INSTALL_FAILED",
-                    "清理旧版预装插件市场失败",
-                    err.to_string(),
-                    true,
-                )
-            })?;
-        }
-        copy_path_recursively(&source_path, &target_path).map_err(|err| {
-            AppError::new(
-                "PLUGIN_INSTALL_FAILED",
-                "复制预装插件市场失败",
-                err.to_string(),
-                true,
-            )
-        })?;
-        // Windows 上历史脏目录或异常中断后，目标目录中的 `.agents/plugins/marketplace.json`
-        // 可能缺失或残留旧内容；这里强制以资源目录中的 manifest 覆写一遍，保证 Codex
-        // 始终能按官方 marketplace 结构重新发现插件。
-        copy_marketplace_manifest(&source_path, &target_path)?;
-        let canonical_target = std::fs::canonicalize(&target_path).unwrap_or(target_path);
+        let canonical_target = std::fs::canonicalize(&source_path).unwrap_or(source_path);
         marketplaces.push(BundledPluginMarketplace {
             name: manifest.name,
             root: canonical_target,
@@ -550,15 +510,6 @@ pub(crate) fn install_builtin_plugin_marketplaces_from(
     }
     marketplaces.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(marketplaces)
-}
-
-/// 当资源目录与 profile 中的 marketplace 内容完全一致时，直接复用已有目录，避免 Windows
-/// 在重复启动时因为目录仍被后台句柄占用而删除失败。
-fn marketplace_directories_match(source: &Path, target: &Path) -> Result<bool, AppError> {
-    if !target.is_dir() {
-        return Ok(false);
-    }
-    Ok(directory_contents_fingerprint(source)? == directory_contents_fingerprint(target)?)
 }
 
 /// 解析 marketplace.json，并提取稳定 marketplace 名称和插件清单。
@@ -585,90 +536,26 @@ fn read_marketplace_manifest(source_path: &Path) -> Result<MarketplaceManifest, 
     })
 }
 
-/// 递归复制目录内容，确保预装插件可以离线落盘到 profile。
-fn copy_path_recursively(source: &Path, target: &Path) -> std::io::Result<()> {
-    if source.is_dir() {
-        std::fs::create_dir_all(target)?;
-        for entry in std::fs::read_dir(source)? {
-            let entry = entry?;
-            let child_source = entry.path();
-            let child_target = target.join(entry.file_name());
-            copy_path_recursively(&child_source, &child_target)?;
-        }
-        return Ok(());
-    }
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::copy(source, target).map(|_| ())
-}
-
-/// 显式覆写 marketplace manifest，避免目标目录沿用旧版或不完整的 `.agents` 内容。
-fn copy_marketplace_manifest(source_root: &Path, target_root: &Path) -> Result<(), AppError> {
-    let source_manifest = source_root
-        .join(".agents")
-        .join("plugins")
-        .join("marketplace.json");
-    let target_manifest = target_root
-        .join(".agents")
-        .join("plugins")
-        .join("marketplace.json");
-    std::fs::create_dir_all(
-        target_manifest
-            .parent()
-            .expect("marketplace manifest parent should exist"),
-    )
-    .map_err(|err| {
-        AppError::new(
-            "PLUGIN_INSTALL_FAILED",
-            "创建预装插件 marketplace manifest 目录失败",
-            err.to_string(),
-            true,
-        )
-    })?;
-    std::fs::copy(&source_manifest, &target_manifest)
-        .map(|_| ())
-        .map_err(|err| {
-            AppError::new(
-                "PLUGIN_INSTALL_FAILED",
-                "写入预装插件 marketplace manifest 失败",
-                format!(
-                    "{} -> {}: {}",
-                    source_manifest.display(),
-                    target_manifest.display(),
-                    err
-                ),
-                true,
-            )
-        })
-}
-
-/// 计算单个 marketplace 目录的稳定内容指纹，用于判断 profile 中是否已是最新副本。
-fn directory_contents_fingerprint(root: &Path) -> Result<u64, AppError> {
-    let mut hasher = DefaultHasher::new();
-    hash_directory_contents(root, root, &mut hasher)?;
-    Ok(hasher.finish())
-}
-
 /// 把离线 marketplace 和默认启用的插件条目写入当前 profile 的 config.toml。
 pub(crate) fn ensure_builtin_plugin_marketplaces_config(
     codex_home: &Path,
     marketplaces: &[BundledPluginMarketplace],
 ) -> Result<(), AppError> {
+    std::fs::create_dir_all(codex_home).map_err(|err| {
+        AppError::new(
+            "PLUGIN_INSTALL_FAILED",
+            "创建 Codex Home 失败",
+            err.to_string(),
+            true,
+        )
+    })?;
     let config_path = codex_home.join("config.toml");
-    let raw = if config_path.is_file() {
-        std::fs::read_to_string(&config_path).map_err(|err| {
-            AppError::new(
-                "PLUGIN_INSTALL_FAILED",
-                "读取 Codex 配置文件失败",
-                err.to_string(),
-                true,
-            )
-        })?
-    } else {
-        String::new()
-    };
-    let mut document = raw.parse::<DocumentMut>().unwrap_or_default();
+    let mut document = load_existing_config_document(
+        &config_path,
+        "PLUGIN_INSTALL_FAILED",
+        "读取 Codex 配置文件失败",
+        "解析 Codex 配置文件失败",
+    )?;
     // 清理旧版本遗留的 `kong` marketplace，避免升级后列表中继续出现非官方标识。
     remove_legacy_builtin_plugin_marketplaces(codex_home, &mut document)?;
     cleanup_stale_builtin_plugin_marketplaces(codex_home, &mut document, marketplaces)?;
@@ -867,7 +754,7 @@ fn collect_managed_builtin_marketplace_names(
 
     let preinstalled_root = codex_home.join(CODEX_MARKETPLACES_DIRECTORY);
     if !preinstalled_root.is_dir() {
-        collect_builtin_marketplace_names_from_config(document, &mut names);
+        collect_builtin_marketplace_names_from_config(document, &preinstalled_root, &mut names);
         return Ok(names);
     }
 
@@ -892,25 +779,49 @@ fn collect_managed_builtin_marketplace_names(
             names.insert(entry.file_name().to_string_lossy().to_string());
         }
     }
-    collect_builtin_marketplace_names_from_config(document, &mut names);
+    collect_builtin_marketplace_names_from_config(document, &preinstalled_root, &mut names);
     Ok(names)
 }
 
 /// 从当前配置文件中补采集已声明过的内置 marketplace 名称，避免目录已删但配置残留时漏清理。
 fn collect_builtin_marketplace_names_from_config(
     document: &DocumentMut,
+    preinstalled_root: &Path,
     names: &mut HashSet<String>,
 ) {
     if let Some(marketplaces_table) = document.get("marketplaces").and_then(Item::as_table) {
-        names.extend(marketplaces_table.iter().map(|(key, _)| key.to_string()));
+        for (key, item) in marketplaces_table.iter() {
+            if builtin_marketplace_entry_matches_preinstalled_root(item, preinstalled_root) {
+                names.insert(key.to_string());
+            }
+        }
     }
     if let Some(plugins_table) = document.get("plugins").and_then(Item::as_table) {
         for plugin_id in plugins_table.iter().map(|(key, _)| key.to_string()) {
             if let Some((_, marketplace_name)) = plugin_id.rsplit_once('@') {
-                names.insert(marketplace_name.to_string());
+                if names.contains(marketplace_name) {
+                    names.insert(marketplace_name.to_string());
+                }
             }
         }
     }
+}
+
+/// 仅把 source 指向 Lex Vault 内置预装目录的 marketplace 视为受托管条目，避免误删用户手动添加的市场。
+fn builtin_marketplace_entry_matches_preinstalled_root(
+    item: &Item,
+    preinstalled_root: &Path,
+) -> bool {
+    let Some(table) = item.as_table() else {
+        return false;
+    };
+    if table.get("source_type").and_then(Item::as_str) != Some("local") {
+        return false;
+    }
+    let Some(source) = table.get("source").and_then(Item::as_str) else {
+        return false;
+    };
+    Path::new(source).starts_with(preinstalled_root)
 }
 
 /// 递归收集文件内容，生成稳定指纹，便于判断资源插件是否发生变化。

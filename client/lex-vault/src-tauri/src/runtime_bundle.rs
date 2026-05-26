@@ -21,18 +21,16 @@ pub(crate) const RUNTIME_BUNDLE_EVENT_NAME: &str = "lex-vault://runtime-bundle";
 /// Lex Vault 用户级数据目录名。
 pub(crate) const LEX_VAULT_HOME_DIRECTORY: &str = ".lex-vault";
 /// 统一主 runtime 目录名。
-pub(crate) const PRIMARY_RUNTIME_DIRECTORY: &str = "codex-primary-runtime";
+pub(crate) const PRIMARY_RUNTIME_DIRECTORY: &str = "agent-primary-runtime";
 /// 用户级缓存中预期存在的 runtime zip 文件名。
-const PRIMARY_RUNTIME_ARCHIVE_FILE_NAME: &str = "codex-primary-runtime.zip";
+const PRIMARY_RUNTIME_ARCHIVE_FILE_NAME: &str = "agent-primary-runtime.zip";
 /// 云端 runtime zip 默认下载地址。
 const PRIMARY_RUNTIME_ARCHIVE_URL: &str =
-    "https://lex-vault.oss-cn-beijing.aliyuncs.com/v0.1/codex-primary-runtime.zip";
+    "https://lex-vault.oss-cn-beijing.aliyuncs.com/v0.1/agent-primary-runtime.zip";
 /// 下载后的 runtime zip 在 Lex Vault 家目录中的缓存子目录。
 const LEX_VAULT_DOWNLOADS_DIRECTORY: &str = "downloads";
-/// 解压阶段使用的临时目录。
-const LEX_VAULT_TEMP_DIRECTORY: &str = ".tmp";
 /// 当前已安装 runtime 源信息元数据文件名。
-const PRIMARY_RUNTIME_SOURCE_METADATA_FILE: &str = "codex-primary-runtime-source.json";
+const PRIMARY_RUNTIME_SOURCE_METADATA_FILE: &str = "agent-primary-runtime-source.json";
 /// 覆盖云端 runtime zip 地址的环境变量名，便于切换灰度包。
 const RUNTIME_ARCHIVE_URL_ENV: &str = "LEX_VAULT_RUNTIME_ARCHIVE_URL";
 
@@ -103,12 +101,12 @@ pub(crate) fn lex_vault_home_dir() -> Result<PathBuf, AppError> {
     Ok(home.join(LEX_VAULT_HOME_DIRECTORY))
 }
 
-/// 确保 `~/.lex-vault/codex-primary-runtime` 已从当前代码指定的云端 zip 解压完成，并返回根目录。
+/// 确保 `~/.lex-vault/agent-primary-runtime` 已从当前代码指定的云端 zip 解压完成，并返回根目录。
 pub(crate) fn ensure_primary_runtime_bundle() -> Result<PathBuf, AppError> {
     ensure_primary_runtime_bundle_with_reporter(&mut |_| {})
 }
 
-/// 确保 `~/.lex-vault/codex-primary-runtime` 已从当前代码指定的云端 zip 解压完成，并允许调用方订阅阶段进度。
+/// 确保 `~/.lex-vault/agent-primary-runtime` 已从当前代码指定的云端 zip 解压完成，并允许调用方订阅阶段进度。
 pub(crate) fn ensure_primary_runtime_bundle_with_reporter(
     reporter: &mut dyn FnMut(RuntimeBundleProgress),
 ) -> Result<PathBuf, AppError> {
@@ -179,7 +177,7 @@ pub(crate) fn locate_runtime_plugin_marketplaces_directory() -> Result<Option<Pa
         .map(|path| std::fs::canonicalize(&path).unwrap_or(path)))
 }
 
-/// 将指定 zip 解压并安装到 `~/.lex-vault/codex-primary-runtime`，供测试和运行时共用。
+/// 将指定 zip 直接解压并安装到 `~/.lex-vault/agent-primary-runtime`，供测试和运行时共用。
 pub(crate) fn install_runtime_bundle_from_archive(
     archive_path: &Path,
     lex_vault_home: &Path,
@@ -203,24 +201,15 @@ pub(crate) fn install_runtime_bundle_from_archive(
         )
     })?;
 
-    let temp_root = lex_vault_home
-        .join(LEX_VAULT_TEMP_DIRECTORY)
-        .join(format!("{PRIMARY_RUNTIME_DIRECTORY}-{}", Uuid::new_v4()));
-    fs::create_dir_all(&temp_root).map_err(|err| {
-        AppError::new(
-            "CODEX_RUNTIME_START_FAILED",
-            "创建运行时解压临时目录失败",
-            err.to_string(),
-            true,
-        )
-    })?;
-
+    let final_root = lex_vault_home.join(PRIMARY_RUNTIME_DIRECTORY);
     let install_result = (|| -> Result<PathBuf, AppError> {
-        extract_runtime_archive(archive_path, &temp_root, reporter)?;
-        let extracted_root = resolve_extracted_runtime_root(&temp_root)?;
-        let final_root = lex_vault_home.join(PRIMARY_RUNTIME_DIRECTORY);
         if final_root.exists() {
-            fs::remove_dir_all(&final_root).map_err(|err| {
+            let remove_result = if final_root.is_dir() {
+                fs::remove_dir_all(&final_root)
+            } else {
+                fs::remove_file(&final_root)
+            };
+            remove_result.map_err(|err| {
                 AppError::new(
                     "CODEX_RUNTIME_START_FAILED",
                     "清理旧版运行时目录失败",
@@ -229,22 +218,29 @@ pub(crate) fn install_runtime_bundle_from_archive(
                 )
             })?;
         }
-        fs::rename(&extracted_root, &final_root).map_err(|err| {
+        fs::create_dir_all(&final_root).map_err(|err| {
             AppError::new(
                 "CODEX_RUNTIME_START_FAILED",
-                "替换运行时目录失败",
-                format!(
-                    "{} -> {}: {err}",
-                    extracted_root.display(),
-                    final_root.display()
-                ),
+                "创建运行时解压目录失败",
+                format!("{}: {err}", final_root.display()),
                 true,
             )
         })?;
-        Ok(std::fs::canonicalize(&final_root).unwrap_or(final_root))
+        extract_runtime_archive(archive_path, &final_root, reporter)?;
+        if !is_valid_runtime_root(&final_root) {
+            return Err(AppError::new(
+                "CODEX_RUNTIME_START_FAILED",
+                "运行时压缩包结构不正确",
+                final_root.display().to_string(),
+                true,
+            ));
+        }
+        Ok(std::fs::canonicalize(&final_root).unwrap_or_else(|_| final_root.clone()))
     })();
 
-    let _ = fs::remove_dir_all(&temp_root);
+    if install_result.is_err() {
+        let _ = fs::remove_dir_all(&final_root);
+    }
     install_result
 }
 
@@ -533,6 +529,7 @@ fn extract_runtime_archive(
         )
     })?;
     let total_entries = archive.len() as u64;
+    let strip_root = detect_archive_root_to_strip(&mut archive)?;
     log_with_details(
         "INFO",
         "runtime_bundle_extract_started",
@@ -561,7 +558,13 @@ fn extract_runtime_archive(
                 true,
             )
         })?;
-        let relative_path = sanitize_archive_entry_path(entry.name())?;
+        let relative_path = strip_archive_root_prefix(
+            sanitize_archive_entry_path(entry.name())?,
+            strip_root.as_deref(),
+        );
+        if relative_path.as_os_str().is_empty() {
+            continue;
+        }
         let output_path = target_root.join(&relative_path);
         if entry.is_dir() {
             fs::create_dir_all(&output_path).map_err(|err| {
@@ -621,6 +624,58 @@ fn extract_runtime_archive(
         }),
     );
     Ok(())
+}
+
+/// 如果 zip 外层包了一层目录，解压到固定 `agent-primary-runtime` 时去掉这层目录名。
+fn detect_archive_root_to_strip(
+    archive: &mut ZipArchive<File>,
+) -> Result<Option<PathBuf>, AppError> {
+    let mut paths = Vec::new();
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|err| {
+            AppError::new(
+                "CODEX_RUNTIME_START_FAILED",
+                "读取运行时压缩包条目失败",
+                err.to_string(),
+                true,
+            )
+        })?;
+        let path = sanitize_archive_entry_path(entry.name())?;
+        if !path.as_os_str().is_empty() {
+            paths.push(path);
+        }
+    }
+    if paths.iter().any(|path| {
+        path == Path::new("runtime.json")
+            || path
+                .components()
+                .next()
+                .map(|component| component.as_os_str() == "dependencies")
+                .unwrap_or(false)
+    }) {
+        return Ok(None);
+    }
+    let mut roots = paths
+        .iter()
+        .filter_map(|path| path.components().next())
+        .map(|component| PathBuf::from(component.as_os_str()))
+        .collect::<Vec<_>>();
+    roots.sort();
+    roots.dedup();
+    if roots.len() == 1 {
+        return Ok(roots.pop());
+    }
+    Ok(None)
+}
+
+/// 去掉 zip 中额外包裹的单层根目录。
+fn strip_archive_root_prefix(path: PathBuf, strip_root: Option<&Path>) -> PathBuf {
+    let Some(strip_root) = strip_root else {
+        return path;
+    };
+    path.strip_prefix(strip_root)
+        .map(Path::to_path_buf)
+        .unwrap_or(path)
 }
 
 /// 从解压临时目录中找到真正的 runtime 根目录。

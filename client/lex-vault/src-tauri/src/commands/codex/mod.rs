@@ -11,16 +11,17 @@ pub(crate) use command_handlers::{
     codex_add_marketplace, codex_compact_thread, codex_install_plugin, codex_interrupt_turn,
     codex_list_plugins, codex_list_threads, codex_prepare_runtime_bundle, codex_read_plugin,
     codex_read_thread, codex_remove_marketplace, codex_reset_memory, codex_respond_approval,
-    codex_resume_thread, codex_set_thread_memory_mode, codex_start_legal_turn, codex_start_runtime,
-    codex_start_thread, codex_stop_runtime, codex_uninstall_plugin, codex_upgrade_marketplace,
+    codex_resume_thread, codex_set_plugin_enabled, codex_set_thread_memory_mode,
+    codex_start_legal_turn, codex_start_runtime, codex_start_thread, codex_stop_runtime,
+    codex_uninstall_plugin, codex_upgrade_marketplace,
 };
 pub use models::AppState;
 pub(crate) use models::{
     AddMarketplaceRequest, CodexOperationResult, CodexPluginDetails, CodexPluginListResult,
     CodexRuntime, CodexRuntimeView, CodexThreadListResult, CodexThreadRecord, CompactThreadRequest,
-    InterruptTurnRequest, ListThreadsRequest, PluginLookupRequest, ReadThreadRequest,
-    RemoveMarketplaceRequest, ResumeThreadRequest, StartThreadRequest, ThreadMemoryModeRequest,
-    UninstallPluginRequest, UpgradeMarketplaceRequest,
+    InterruptTurnRequest, ListThreadsRequest, PluginEnablementRequest, PluginLookupRequest,
+    ReadThreadRequest, RemoveMarketplaceRequest, ResumeThreadRequest, StartThreadRequest,
+    ThreadMemoryModeRequest, UninstallPluginRequest, UpgradeMarketplaceRequest,
 };
 pub(crate) use runtime_support::{
     audit, builtin_plugin_marketplaces_fingerprint, cleanup_legacy_builtin_skills,

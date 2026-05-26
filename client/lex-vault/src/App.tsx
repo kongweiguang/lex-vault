@@ -28,7 +28,6 @@ import {
 import { createChatHistoryManager } from "@/features/chat/chat-history-manager";
 import { createCodexEventHandler } from "@/features/chat/codex-event-handler";
 import { createChatTurnManager } from "@/features/chat/chat-turn-manager";
-import { buildPluginCreatorPrompt } from "@/features/extensions/plugin-creation";
 import { createLibraryWorkspaceManager } from "@/features/library/library-workspace-manager";
 import { WorkspaceSetup } from "@/features/workspace/WorkspaceSetup";
 import { RuntimeBundleBlockingDialog } from "@/features/workspace/RuntimeBundleBlockingDialog";
@@ -52,14 +51,13 @@ import {
   subscribeUpdaterState,
 } from "@/services/updater-service";
 import {
-  addCodexMarketplace,
+  installCodexPlugin,
   listCodexPlugins,
   prepareCodexRuntimeBundle,
   listenCodexEvents,
-  removeCodexMarketplace,
   respondCodexApproval,
+  setCodexPluginEnabled,
   startCodexRuntime,
-  upgradeCodexMarketplace,
 } from "@/services/codex-service";
 import {
   listNativeFiles,
@@ -794,7 +792,7 @@ function App() {
   }
 
   /** 直接读取 app-server 当前插件清单，供插件中心和聊天输入区复用。 */
-  const refreshPlugins = useCallback(async () => {
+  const refreshPlugins = useCallback(async (successNotice?: string | null) => {
     if (!isWorkspaceConfigured) {
       setPluginList(null);
       return;
@@ -811,7 +809,7 @@ function App() {
       await startCodexRuntime(CODEX_PROFILE_ID);
       const nextPluginList = await listCodexPlugins();
       setPluginList(nextPluginList);
-      setPluginNotice(null);
+      setPluginNotice(successNotice ?? null);
       setSelectedPluginIdsBySession((current) => {
         const validIds = new Set(nextPluginList.plugins.filter((plugin) => plugin.installed).map((plugin) => plugin.id));
         return Object.fromEntries(
@@ -829,70 +827,19 @@ function App() {
     }
   }, [isWorkspaceConfigured]);
 
-  /** 添加市场并立刻刷新插件列表。 */
-  const addMarketplaceAndRefresh = useCallback(async (source: string) => {
-    setIsPluginLoading(true);
-    try {
-      const result = await addCodexMarketplace(source);
-      setPluginNotice(result.message || "插件市场添加完成。");
-      await refreshPlugins();
-    } catch (error) {
-      setPluginNotice("插件市场添加失败。");
-      console.error("添加插件市场失败", error);
-    } finally {
-      setIsPluginLoading(false);
-    }
+  /** 安装单个插件并刷新当前插件视图。 */
+  const installPlugin = useCallback(async (marketplacePath: string, pluginName: string) => {
+    await startCodexRuntime(CODEX_PROFILE_ID);
+    const result = await installCodexPlugin(marketplacePath, pluginName);
+    await refreshPlugins(result.message);
   }, [refreshPlugins]);
 
-  /** 移除市场并刷新插件列表。 */
-  const removeMarketplaceAndRefresh = useCallback(async (name: string) => {
-    setIsPluginLoading(true);
-    try {
-      const result = await removeCodexMarketplace(name);
-      setPluginNotice(result.message || "插件市场已移除。");
-      await refreshPlugins();
-    } catch (error) {
-      setPluginNotice("插件市场移除失败。");
-      console.error("移除插件市场失败", error);
-    } finally {
-      setIsPluginLoading(false);
-    }
+  /** 切换单个插件在当前 profile 下的启用状态，并刷新页面状态。 */
+  const setPluginEnabled = useCallback(async (pluginId: string, enabled: boolean) => {
+    await startCodexRuntime(CODEX_PROFILE_ID);
+    const result = await setCodexPluginEnabled(pluginId, enabled);
+    await refreshPlugins(result.message);
   }, [refreshPlugins]);
-
-  /** 升级一个或全部市场后刷新插件列表。 */
-  const upgradeMarketplaceAndRefresh = useCallback(async (marketplaceName?: string) => {
-    setIsPluginLoading(true);
-    try {
-      const result = await upgradeCodexMarketplace(marketplaceName);
-      setPluginNotice(result.message || "插件市场升级完成。");
-      await refreshPlugins();
-    } catch (error) {
-      setPluginNotice("插件市场升级失败。");
-      console.error("升级插件市场失败", error);
-    } finally {
-      setIsPluginLoading(false);
-    }
-  }, [refreshPlugins]);
-
-  /** 创建插件入口会跳到普通对话，并显式使用 plugin-creator 生成脚手架。 */
-  const handleCreatePlugin = useCallback(async (request: string) => {
-    const workspaceRoot = workspaceRootRef.current.trim();
-    if (!workspaceRoot) {
-      setActiveNav("设置");
-      return;
-    }
-
-    const nextSessionId = createSessionId();
-    const context: SessionContext = { agentType: "default", casePath: workspaceRoot };
-    const prompt = buildPluginCreatorPrompt(request);
-
-    chatHistoryManager.rememberSelectedSession(nextSessionId, context);
-    setActiveNav("对话");
-    await chatTurnManager.handleSendToSession(nextSessionId, prompt, prompt, [], [], {
-      contextOverride: context,
-      skillNameOverride: "plugin-creator",
-    });
-  }, [chatHistoryManager, chatTurnManager]);
 
   /** 把插件加入或移出当前会话，供发送链路自动注入 mention。 */
   const setSelectedPluginsForCurrentSession = useCallback((pluginIds: string[]) => {
@@ -1356,11 +1303,9 @@ function App() {
             cases={cases}
             isPluginLoading={isPluginLoading}
             mode="工具"
-            onAddMarketplace={addMarketplaceAndRefresh}
-            onCreatePlugin={handleCreatePlugin}
+            onInstallPlugin={installPlugin}
             onRefreshPlugins={refreshPlugins}
-            onRemoveMarketplace={removeMarketplaceAndRefresh}
-            onUpgradeMarketplace={upgradeMarketplaceAndRefresh}
+            onSetPluginEnabled={setPluginEnabled}
             pluginList={pluginList}
             pluginNotice={pluginNotice}
           />
@@ -1369,11 +1314,9 @@ function App() {
             cases={cases}
             isPluginLoading={isPluginLoading}
             mode="插件"
-            onAddMarketplace={addMarketplaceAndRefresh}
-            onCreatePlugin={handleCreatePlugin}
+            onInstallPlugin={installPlugin}
             onRefreshPlugins={refreshPlugins}
-            onRemoveMarketplace={removeMarketplaceAndRefresh}
-            onUpgradeMarketplace={upgradeMarketplaceAndRefresh}
+            onSetPluginEnabled={setPluginEnabled}
             pluginList={pluginList}
             pluginNotice={pluginNotice}
           />

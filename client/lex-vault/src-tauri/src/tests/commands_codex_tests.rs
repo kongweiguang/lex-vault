@@ -205,9 +205,9 @@ fn resolve_skill_path_returns_none_when_skill_is_missing() {
     let _ = std::fs::remove_dir_all(temp_root);
 }
 
-/// 验证 runtime zip 中的 marketplace 目录会复制到当前 profile 的固定预装目录。
+/// 验证 runtime zip 中的 marketplace 目录会被直接登记为预装资源，不再复制到 profile。
 #[test]
-fn install_builtin_plugin_marketplaces_copies_marketplace_into_profile() {
+fn install_builtin_plugin_marketplaces_uses_runtime_marketplace_in_place() {
     let temp_root =
         std::env::temp_dir().join(format!("lex-vault-builtin-plugins-{}", std::process::id()));
     let resources_dir = temp_root
@@ -261,196 +261,25 @@ fn install_builtin_plugin_marketplaces_copies_marketplace_into_profile() {
     )
     .expect("marketplace should be installed");
 
-    let copied_marketplace = codex_home
-        .join(CODEX_MARKETPLACES_DIRECTORY)
-        .join("demo-market");
     assert_eq!(marketplaces.len(), 1);
     assert_eq!(marketplaces[0].name, "demo-market");
     assert_eq!(marketplaces[0].plugin_names, vec!["demo-plugin"]);
-    assert!(
-        copied_marketplace
-            .join(".agents/plugins/marketplace.json")
-            .is_file(),
-        "copied marketplace manifest should exist"
+    assert_eq!(
+        marketplaces[0].root,
+        std::fs::canonicalize(&resources_dir).expect("resources dir should canonicalize")
     );
     assert!(
-        copied_marketplace
+        !codex_home
+            .join(CODEX_MARKETPLACES_DIRECTORY)
+            .join("demo-market")
+            .exists(),
+        "marketplace should not be copied into profile"
+    );
+    assert!(
+        resources_dir
             .join("plugins/demo-plugin/.codex-plugin/plugin.json")
             .is_file(),
-        "copied plugin manifest should exist"
-    );
-
-    let _ = std::fs::remove_dir_all(temp_root);
-}
-
-/// 验证重新同步时会用资源目录 manifest 覆写目标目录中的脏 marketplace 元数据。
-#[test]
-fn install_builtin_plugin_marketplaces_restores_marketplace_manifest() {
-    let temp_root = std::env::temp_dir().join(format!(
-        "lex-vault-builtin-plugin-manifest-{}",
-        std::process::id()
-    ));
-    let resources_dir = temp_root
-        .join("resources")
-        .join("plugins")
-        .join("demo-market");
-    let codex_home = temp_root.join(CODEX_HOME_DIRECTORY);
-    let source_manifest_path = resources_dir
-        .join(".agents")
-        .join("plugins")
-        .join("marketplace.json");
-    let plugin_manifest_path = resources_dir
-        .join("plugins")
-        .join("demo-plugin")
-        .join(".codex-plugin")
-        .join("plugin.json");
-    std::fs::create_dir_all(
-        source_manifest_path
-            .parent()
-            .expect("manifest parent should exist"),
-    )
-    .expect("marketplace dir should be created");
-    std::fs::create_dir_all(
-        plugin_manifest_path
-            .parent()
-            .expect("plugin manifest parent should exist"),
-    )
-    .expect("plugin dir should be created");
-    std::fs::write(
-        &source_manifest_path,
-        r#"{
-  "name": "demo-market",
-  "plugins": [
-    { "name": "demo-plugin" }
-  ]
-}"#,
-    )
-    .expect("marketplace manifest should be written");
-    std::fs::write(
-        &plugin_manifest_path,
-        r#"{
-  "name": "demo-plugin",
-  "version": "1.0.0"
-}"#,
-    )
-    .expect("plugin manifest should be written");
-
-    let stale_manifest_path = codex_home
-        .join(CODEX_MARKETPLACES_DIRECTORY)
-        .join("demo-market")
-        .join(".agents")
-        .join("plugins")
-        .join("marketplace.json");
-    std::fs::create_dir_all(
-        stale_manifest_path
-            .parent()
-            .expect("stale manifest parent should exist"),
-    )
-    .expect("stale marketplace dir should be created");
-    std::fs::write(
-        &stale_manifest_path,
-        r#"{
-  "name": "demo-market",
-  "plugins": [
-    { "name": "stale-plugin" }
-  ]
-}"#,
-    )
-    .expect("stale marketplace manifest should be written");
-
-    install_builtin_plugin_marketplaces_from(
-        &temp_root.join("resources").join("plugins"),
-        &codex_home,
-    )
-    .expect("marketplace should be installed");
-
-    let restored_manifest =
-        std::fs::read_to_string(&stale_manifest_path).expect("restored manifest should exist");
-    assert!(
-        restored_manifest.contains("\"demo-plugin\""),
-        "restored manifest should contain source plugin entry: {restored_manifest}"
-    );
-    assert!(
-        !restored_manifest.contains("\"stale-plugin\""),
-        "restored manifest should not keep stale plugin entry: {restored_manifest}"
-    );
-
-    let _ = std::fs::remove_dir_all(temp_root);
-}
-
-/// 验证重复同步相同的预装 marketplace 时会直接复用已有目录，避免 Windows 因目录占用导致删除失败。
-#[test]
-fn install_builtin_plugin_marketplaces_reuses_existing_directory_when_contents_match() {
-    let temp_root = std::env::temp_dir().join(format!(
-        "lex-vault-builtin-plugin-reuse-{}",
-        std::process::id()
-    ));
-    let resources_dir = temp_root
-        .join("resources")
-        .join("plugins")
-        .join("demo-market");
-    let codex_home = temp_root.join(CODEX_HOME_DIRECTORY);
-    let manifest_path = resources_dir
-        .join(".agents")
-        .join("plugins")
-        .join("marketplace.json");
-    let skill_file = resources_dir
-        .join("plugins")
-        .join("demo-plugin")
-        .join("skills")
-        .join("demo")
-        .join("SKILL.md");
-    std::fs::create_dir_all(
-        manifest_path
-            .parent()
-            .expect("manifest parent should exist"),
-    )
-    .expect("marketplace dir should be created");
-    std::fs::create_dir_all(skill_file.parent().expect("skill dir should exist"))
-        .expect("skill dir should be created");
-    std::fs::write(
-        &manifest_path,
-        r#"{
-  "name": "demo-market",
-  "plugins": [
-    { "name": "demo-plugin" }
-  ]
-}"#,
-    )
-    .expect("marketplace manifest should be written");
-    std::fs::write(&skill_file, "# same").expect("skill file should be written");
-
-    install_builtin_plugin_marketplaces_from(
-        &temp_root.join("resources").join("plugins"),
-        &codex_home,
-    )
-    .expect("first marketplace install should succeed");
-    let copied_manifest = codex_home
-        .join(CODEX_MARKETPLACES_DIRECTORY)
-        .join("demo-market")
-        .join(".agents")
-        .join("plugins")
-        .join("marketplace.json");
-    let first_write_time = std::fs::metadata(&copied_manifest)
-        .expect("copied manifest should exist")
-        .modified()
-        .expect("copied manifest modified time should exist");
-
-    std::thread::sleep(std::time::Duration::from_millis(1100));
-
-    install_builtin_plugin_marketplaces_from(
-        &temp_root.join("resources").join("plugins"),
-        &codex_home,
-    )
-    .expect("second marketplace install should succeed");
-    let second_write_time = std::fs::metadata(&copied_manifest)
-        .expect("copied manifest should still exist")
-        .modified()
-        .expect("copied manifest modified time should still exist");
-
-    assert_eq!(
-        first_write_time, second_write_time,
-        "unchanged marketplace should be reused instead of being recopied"
+        "runtime marketplace plugin manifest should remain in place"
     );
 
     let _ = std::fs::remove_dir_all(temp_root);
@@ -508,9 +337,7 @@ fn builtin_plugin_marketplaces_fingerprint_changes_when_content_changes() {
         .expect("fingerprint should exist");
 
     std::fs::write(
-        codex_home
-            .join(CODEX_MARKETPLACES_DIRECTORY)
-            .join("demo-market")
+        resources_dir
             .join("plugins")
             .join("demo-plugin")
             .join("skills")
@@ -518,7 +345,7 @@ fn builtin_plugin_marketplaces_fingerprint_changes_when_content_changes() {
             .join("SKILL.md"),
         "# second",
     )
-    .expect("copied skill file should be updated");
+    .expect("runtime skill file should be updated");
 
     let second_fingerprint = builtin_plugin_marketplaces_fingerprint(&marketplaces)
         .expect("fingerprint should be recalculated")
@@ -612,6 +439,244 @@ fn ensure_builtin_plugin_marketplaces_config_writes_marketplaces_and_plugins() {
     let _ = std::fs::remove_dir_all(temp_root);
 }
 
+/// 验证预装插件配置写入时会保留用户已有无关配置，只补写律隐台托管的 marketplace 和 plugin 段。
+#[test]
+fn ensure_builtin_plugin_marketplaces_config_preserves_unrelated_entries() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lex-vault-builtin-plugin-preserve-{}",
+        std::process::id()
+    ));
+    let resources_dir = temp_root
+        .join("resources")
+        .join("plugins")
+        .join("demo-market");
+    let codex_home = temp_root.join(CODEX_HOME_DIRECTORY);
+    let manifest_path = resources_dir
+        .join(".agents")
+        .join("plugins")
+        .join("marketplace.json");
+    let plugin_manifest_path = resources_dir
+        .join("plugins")
+        .join("demo-plugin")
+        .join(".codex-plugin")
+        .join("plugin.json");
+    std::fs::create_dir_all(
+        manifest_path
+            .parent()
+            .expect("manifest parent should exist"),
+    )
+    .expect("marketplace dir should be created");
+    std::fs::create_dir_all(
+        plugin_manifest_path
+            .parent()
+            .expect("plugin manifest parent should exist"),
+    )
+    .expect("plugin dir should be created");
+    std::fs::write(
+        &manifest_path,
+        r#"{
+  "name": "demo-market",
+  "plugins": [
+    { "name": "demo-plugin" }
+  ]
+}"#,
+    )
+    .expect("marketplace manifest should be written");
+    std::fs::write(
+        &plugin_manifest_path,
+        r#"{
+  "name": "demo-plugin",
+  "version": "1.0.0"
+}"#,
+    )
+    .expect("plugin manifest should be written");
+    std::fs::create_dir_all(&codex_home).expect("codex home should exist");
+    std::fs::write(
+        codex_home.join("config.toml"),
+        "model = \"custom-model\"\n\n[features]\nmemories = false\n",
+    )
+    .expect("seed config should be written");
+
+    let marketplaces = install_builtin_plugin_marketplaces_from(
+        &temp_root.join("resources").join("plugins"),
+        &codex_home,
+    )
+    .expect("marketplace should be installed");
+    ensure_builtin_plugin_marketplaces_config(&codex_home, &marketplaces)
+        .expect("builtin plugin config should be written");
+
+    let config =
+        std::fs::read_to_string(codex_home.join("config.toml")).expect("config should be readable");
+    assert!(
+        config.contains("model = \"custom-model\""),
+        "existing model config should be preserved: {config}"
+    );
+    assert!(
+        config.contains("[features]"),
+        "existing features section should be preserved: {config}"
+    );
+    assert!(
+        config.contains("[marketplaces.demo-market]"),
+        "managed marketplace section should be written: {config}"
+    );
+
+    let _ = std::fs::remove_dir_all(temp_root);
+}
+
+/// 验证已有无效配置时不会把插件配置写成空文档，避免重启时清空用户自定义内容。
+#[test]
+fn ensure_builtin_plugin_marketplaces_config_does_not_truncate_invalid_config() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lex-vault-builtin-plugin-invalid-{}",
+        std::process::id()
+    ));
+    let codex_home = temp_root.join(CODEX_HOME_DIRECTORY);
+    std::fs::create_dir_all(&codex_home).expect("codex home should exist");
+    let invalid_config = "[marketplaces\nsource = \"broken\"\n";
+    let config_path = codex_home.join("config.toml");
+    std::fs::write(&config_path, invalid_config).expect("invalid config should be written");
+
+    let error = ensure_builtin_plugin_marketplaces_config(&codex_home, &[])
+        .expect_err("invalid config should stop overwrite");
+    let after = std::fs::read_to_string(&config_path).expect("config should remain readable");
+
+    assert_eq!(error.code, "PLUGIN_INSTALL_FAILED");
+    assert_eq!(after, invalid_config);
+
+    let _ = std::fs::remove_dir_all(temp_root);
+}
+
+/// 验证用户手动添加的非内置 marketplace 和 plugin 配置不会在重启时被预装插件清理逻辑误删。
+#[test]
+fn ensure_builtin_plugin_marketplaces_config_keeps_manual_marketplace_entries() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lex-vault-builtin-plugin-keep-manual-{}",
+        std::process::id()
+    ));
+    let resources_dir = temp_root
+        .join("resources")
+        .join("plugins")
+        .join("demo-market");
+    let codex_home = temp_root.join(CODEX_HOME_DIRECTORY);
+    let manifest_path = resources_dir
+        .join(".agents")
+        .join("plugins")
+        .join("marketplace.json");
+    let plugin_manifest_path = resources_dir
+        .join("plugins")
+        .join("demo-plugin")
+        .join(".codex-plugin")
+        .join("plugin.json");
+    std::fs::create_dir_all(
+        manifest_path
+            .parent()
+            .expect("manifest parent should exist"),
+    )
+    .expect("marketplace dir should be created");
+    std::fs::create_dir_all(
+        plugin_manifest_path
+            .parent()
+            .expect("plugin manifest parent should exist"),
+    )
+    .expect("plugin dir should be created");
+    std::fs::write(
+        &manifest_path,
+        r#"{
+  "name": "demo-market",
+  "plugins": [
+    { "name": "demo-plugin" }
+  ]
+}"#,
+    )
+    .expect("marketplace manifest should be written");
+    std::fs::write(
+        &plugin_manifest_path,
+        r#"{
+  "name": "demo-plugin",
+  "version": "1.0.0"
+}"#,
+    )
+    .expect("plugin manifest should be written");
+
+    std::fs::create_dir_all(&codex_home).expect("codex home should exist");
+    std::fs::write(
+        codex_home.join("config.toml"),
+        r#"[marketplaces.manual-market]
+source_type = "remote"
+source = "https://example.com/marketplace.json"
+
+[plugins."manual-tool@manual-market"]
+enabled = true
+"#,
+    )
+    .expect("manual config should be written");
+
+    let marketplaces = install_builtin_plugin_marketplaces_from(
+        &temp_root.join("resources").join("plugins"),
+        &codex_home,
+    )
+    .expect("marketplace should be installed");
+    ensure_builtin_plugin_marketplaces_config(&codex_home, &marketplaces)
+        .expect("builtin plugin config should be written");
+
+    let config =
+        std::fs::read_to_string(codex_home.join("config.toml")).expect("config should be readable");
+    assert!(
+        config.contains("[marketplaces.manual-market]"),
+        "manual marketplace should be preserved: {config}"
+    );
+    assert!(
+        config.contains("[plugins.\"manual-tool@manual-market\"]"),
+        "manual plugin entry should be preserved: {config}"
+    );
+    assert!(
+        config.contains("[marketplaces.demo-market]"),
+        "builtin marketplace should still be written: {config}"
+    );
+
+    let _ = std::fs::remove_dir_all(temp_root);
+}
+
+/// 验证当前安装包没有内置 marketplace 时，也不会清理用户手动添加的 marketplace 配置。
+#[test]
+fn ensure_builtin_plugin_marketplaces_config_keeps_manual_entries_when_builtin_set_is_empty() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lex-vault-builtin-plugin-empty-keep-manual-{}",
+        std::process::id()
+    ));
+    let codex_home = temp_root.join(CODEX_HOME_DIRECTORY);
+    let builtin_root = codex_home.join(CODEX_MARKETPLACES_DIRECTORY);
+    std::fs::create_dir_all(&builtin_root).expect("builtin marketplace root should exist");
+    std::fs::create_dir_all(&codex_home).expect("codex home should exist");
+    std::fs::write(
+        codex_home.join("config.toml"),
+        r#"[marketplaces.manual-market]
+source_type = "remote"
+source = "https://example.com/marketplace.json"
+
+[plugins."manual-tool@manual-market"]
+enabled = true
+"#,
+    )
+    .expect("manual config should be written");
+
+    ensure_builtin_plugin_marketplaces_config(&codex_home, &[])
+        .expect("empty builtin marketplace rewrite should preserve manual config");
+
+    let config =
+        std::fs::read_to_string(codex_home.join("config.toml")).expect("config should be readable");
+    assert!(
+        config.contains("[marketplaces.manual-market]"),
+        "manual marketplace should be preserved when builtin set is empty: {config}"
+    );
+    assert!(
+        config.contains("[plugins.\"manual-tool@manual-market\"]"),
+        "manual plugin entry should be preserved when builtin set is empty: {config}"
+    );
+
+    let _ = std::fs::remove_dir_all(temp_root);
+}
+
 /// 验证启动 runtime 前会把本地能力 MCP server 预写入 profile 配置，供 app-server 通过 URL 直连。
 #[test]
 fn ensure_builtin_local_mcp_server_config_writes_streamable_http_server() {
@@ -639,6 +704,65 @@ fn ensure_builtin_local_mcp_server_config_writes_streamable_http_server() {
         !config.contains("command = "),
         "config should no longer keep stdio command mode: {config}"
     );
+
+    let _ = std::fs::remove_dir_all(temp_root);
+}
+
+/// 验证已有无关配置会被保留，只补写律隐台托管的本地 MCP 配置。
+#[test]
+fn ensure_builtin_local_mcp_server_config_preserves_unrelated_entries() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lex-vault-calendar-mcp-preserve-{}",
+        std::process::id()
+    ));
+    let codex_home = temp_root.join(CODEX_HOME_DIRECTORY);
+    std::fs::create_dir_all(&codex_home).expect("codex home should exist");
+    std::fs::write(
+        codex_home.join("config.toml"),
+        "model = \"custom-model\"\n\n[features]\nmemories = true\n",
+    )
+    .expect("seed config should be written");
+
+    ensure_builtin_local_mcp_server_config(&codex_home, "http://127.0.0.1:3945/mcp")
+        .expect("local mcp config should be written");
+
+    let config =
+        std::fs::read_to_string(codex_home.join("config.toml")).expect("config should be readable");
+    assert!(
+        config.contains("model = \"custom-model\""),
+        "existing model config should be preserved: {config}"
+    );
+    assert!(
+        config.contains("[features]"),
+        "existing features section should be preserved: {config}"
+    );
+    assert!(
+        config.contains("[mcp_servers.lex_vault_local]"),
+        "managed local mcp section should still be written: {config}"
+    );
+
+    let _ = std::fs::remove_dir_all(temp_root);
+}
+
+/// 验证已有无效配置时不会回退为空文档覆盖原文件，避免重启时把整份配置清空。
+#[test]
+fn ensure_builtin_local_mcp_server_config_does_not_truncate_invalid_config() {
+    let temp_root = std::env::temp_dir().join(format!(
+        "lex-vault-calendar-mcp-invalid-{}",
+        std::process::id()
+    ));
+    let codex_home = temp_root.join(CODEX_HOME_DIRECTORY);
+    std::fs::create_dir_all(&codex_home).expect("codex home should exist");
+    let invalid_config = "[features\nmemories = true\n";
+    let config_path = codex_home.join("config.toml");
+    std::fs::write(&config_path, invalid_config).expect("invalid config should be written");
+
+    let error = ensure_builtin_local_mcp_server_config(&codex_home, "http://127.0.0.1:3945/mcp")
+        .expect_err("invalid config should stop overwrite");
+    let after = std::fs::read_to_string(&config_path).expect("config should remain readable");
+
+    assert_eq!(error.code, "CODEX_RUNTIME_START_FAILED");
+    assert_eq!(after, invalid_config);
 
     let _ = std::fs::remove_dir_all(temp_root);
 }

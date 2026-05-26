@@ -151,6 +151,16 @@ pub struct UninstallPluginRequest {
     pub plugin_id: String,
 }
 
+/// 切换插件启用状态的前端请求。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginEnablementRequest {
+    /// 插件稳定 ID，格式为 `<plugin>@<marketplace>`。
+    pub plugin_id: String,
+    /// 目标启用状态。
+    pub enabled: bool,
+}
+
 /// 前端可直接消费的 Codex 原生 thread 历史记录。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

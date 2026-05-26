@@ -91,6 +91,7 @@ pub fn run() {
             commands::codex::command_handlers::codex_list_plugins,
             commands::codex::command_handlers::codex_read_plugin,
             commands::codex::command_handlers::codex_install_plugin,
+            commands::codex::command_handlers::codex_set_plugin_enabled,
             commands::codex::command_handlers::codex_uninstall_plugin,
             commands::codex::command_handlers::codex_add_marketplace,
             commands::codex::command_handlers::codex_remove_marketplace,

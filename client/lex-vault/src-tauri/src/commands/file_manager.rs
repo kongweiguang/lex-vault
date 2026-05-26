@@ -2,8 +2,10 @@
 //!
 //! @author kongweiguang
 
+use crate::logging::log_with_details;
 use reqwest::blocking::Client;
 use serde::Serialize;
+use serde_json::json;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -34,11 +36,13 @@ const TEXT_EXTENSIONS: &[&str] = &[
     "css", "rs", "toml",
 ];
 
-/// 支持在前端直接渲染的 DOCX 扩展名。
-const DOCX_EXTENSIONS: &[&str] = &["docx"];
-
-/// 仍需交给系统默认程序处理的复杂 Office 扩展名。
-const EXTERNAL_OFFICE_EXTENSIONS: &[&str] = &["doc", "xls", "xlsx", "ppt", "pptx"];
+/// 统一交给前端 JitViewer 渲染的扩展名。
+const JIT_VIEWER_EXTENSIONS: &[&str] = &[
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "html", "htm", "txt", "md",
+    "markdown", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "mp3", "wav", "ogg",
+    "m4a", "flac", "mp4", "webm", "mov", "mkv", "avi", "ofd", "dxf", "xml", "yml", "yaml",
+    "java", "ts", "tsx", "js", "jsx", "css", "rs", "toml",
+];
 
 /// Lex Vault 用户级缓存目录名。
 const USER_CACHE_DIRECTORY: &str = ".lex-vault/cache";
@@ -155,10 +159,26 @@ pub async fn read_native_file(
         } else {
             None
         };
+        let relative = relative_path(&root, &file);
+        log_with_details(
+            "INFO",
+            "native_file_preview_resolved",
+            "解析本机文件预览策略",
+            json!({
+                "path": relative,
+                "extension": extension,
+                "size": metadata.len(),
+                "previewKind": preview.preview_kind,
+                "converter": preview.converter,
+                "assetPath": preview.asset_path,
+                "text": text,
+                "externalReason": preview.external_reason,
+            }),
+        );
 
         Ok(NativeFileContent {
             name: file_name(&file),
-            path: relative_path(&root, &file),
+            path: relative,
             extension,
             size: Some(metadata.len()),
             preview_kind: preview.preview_kind,
@@ -450,17 +470,13 @@ fn preview_file(file: &Path, extension: Option<&str>, size: u64) -> FilePreviewR
         };
     }
 
-    if is_image_file(extension) {
-        return asset_preview("image", file);
-    }
-    if is_pdf_file(extension) {
-        return asset_preview("pdf", file);
-    }
-    if is_audio_file(extension) {
-        return asset_preview("audio", file);
-    }
-    if is_video_file(extension) {
-        return asset_preview("video", file);
+    if is_jit_viewer_file(extension) {
+        return FilePreviewResult {
+            preview_kind: "jit-viewer".to_string(),
+            asset_path: Some(file.to_string_lossy().to_string()),
+            converter: "jit-viewer".to_string(),
+            external_reason: None,
+        };
     }
     if is_archive_file(extension) {
         return FilePreviewResult {
@@ -470,38 +486,11 @@ fn preview_file(file: &Path, extension: Option<&str>, size: u64) -> FilePreviewR
             external_reason: Some("压缩包暂不支持内置预览，请使用系统默认程序打开".to_string()),
         };
     }
-    if is_docx_file(extension) {
-        return FilePreviewResult {
-            preview_kind: "docx".to_string(),
-            asset_path: Some(file.to_string_lossy().to_string()),
-            converter: "docx-preview".to_string(),
-            external_reason: None,
-        };
-    }
-    if is_external_office_file(extension) {
-        return FilePreviewResult {
-            preview_kind: "external".to_string(),
-            asset_path: None,
-            converter: "none".to_string(),
-            external_reason: Some(
-                "当前 Office 格式暂不支持内置预览，请使用系统默认程序打开".to_string(),
-            ),
-        };
-    }
     FilePreviewResult {
         preview_kind: "external".to_string(),
         asset_path: None,
         converter: "none".to_string(),
         external_reason: Some("当前格式暂不支持内置预览，请使用系统默认程序打开".to_string()),
-    }
-}
-
-fn asset_preview(preview_kind: &str, file: &Path) -> FilePreviewResult {
-    FilePreviewResult {
-        preview_kind: preview_kind.to_string(),
-        asset_path: Some(file.to_string_lossy().to_string()),
-        converter: "none".to_string(),
-        external_reason: None,
     }
 }
 
@@ -855,34 +844,10 @@ fn is_text_file(extension: Option<&str>, size: u64) -> bool {
             .unwrap_or(false)
 }
 
-fn is_docx_file(extension: Option<&str>) -> bool {
+fn is_jit_viewer_file(extension: Option<&str>) -> bool {
     extension
-        .map(|value| DOCX_EXTENSIONS.contains(&value))
+        .map(|value| JIT_VIEWER_EXTENSIONS.contains(&value))
         .unwrap_or(false)
-}
-
-fn is_external_office_file(extension: Option<&str>) -> bool {
-    extension
-        .map(|value| EXTERNAL_OFFICE_EXTENSIONS.contains(&value))
-        .unwrap_or(false)
-}
-fn is_image_file(extension: Option<&str>) -> bool {
-    matches!(
-        extension,
-        Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg")
-    )
-}
-
-fn is_pdf_file(extension: Option<&str>) -> bool {
-    matches!(extension, Some("pdf"))
-}
-
-fn is_audio_file(extension: Option<&str>) -> bool {
-    matches!(extension, Some("mp3" | "wav" | "ogg" | "m4a" | "flac"))
-}
-
-fn is_video_file(extension: Option<&str>) -> bool {
-    matches!(extension, Some("mp4" | "webm" | "mov" | "mkv" | "avi"))
 }
 
 fn is_archive_file(extension: Option<&str>) -> bool {

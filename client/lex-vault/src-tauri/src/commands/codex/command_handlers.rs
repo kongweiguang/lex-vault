@@ -11,16 +11,15 @@ use crate::commands::codex::models::{
     operation_result_from_value, plugin_details_from_value, plugin_list_result_from_value,
 };
 use crate::commands::codex::{
-    audit, builtin_plugin_marketplaces_fingerprint, cleanup_legacy_builtin_skills,
-    clear_stale_runtime_if_exited, emit_error, ensure_builtin_local_mcp_server_config,
-    ensure_builtin_plugin_marketplaces_config, ensure_model_instructions_file,
-    install_builtin_plugin_marketplaces, prepare_codex_runtime_home, profile_codex_home,
-    runtime_client, sync_builtin_plugin_marketplaces, thread_record_from_summary,
+    audit, cleanup_legacy_builtin_skills, clear_stale_runtime_if_exited, emit_error,
+    ensure_builtin_local_mcp_server_config, ensure_model_instructions_file,
+    prepare_codex_runtime_home, profile_codex_home, runtime_client, thread_record_from_summary,
     validate_workspace, AddMarketplaceRequest, CodexOperationResult, CodexPluginDetails,
     CodexPluginListResult, CodexRuntime, CodexThreadListResult, CodexThreadRecord,
-    CompactThreadRequest, InterruptTurnRequest, ListThreadsRequest, PluginLookupRequest,
-    ReadThreadRequest, RemoveMarketplaceRequest, ResumeThreadRequest, StartThreadRequest,
-    ThreadMemoryModeRequest, UninstallPluginRequest, UpgradeMarketplaceRequest,
+    CompactThreadRequest, InterruptTurnRequest, ListThreadsRequest, PluginEnablementRequest,
+    PluginLookupRequest, ReadThreadRequest, RemoveMarketplaceRequest, ResumeThreadRequest,
+    StartThreadRequest, ThreadMemoryModeRequest, UninstallPluginRequest,
+    UpgradeMarketplaceRequest,
 };
 use crate::commands::local_data::{get_app_config, AppConfig};
 use crate::event_normalizer::{ApprovalDecisionRequest, CodexUiEvent, ThreadInfo, TurnInfo};
@@ -164,25 +163,9 @@ pub async fn codex_start_runtime(
         "codex_runtime_legacy_skills_cleaned",
         "Codex runtime 旧版本地 skills 已清理",
     );
-    let builtin_marketplaces = {
-        let _bundle_prepare_guard = state.runtime_bundle_prepare.lock().await;
-        tokio::task::block_in_place(|| install_builtin_plugin_marketplaces(&codex_home))
-            .inspect_err(|error| {
-                log_runtime_start_failure("install_builtin_plugin_marketplaces", error);
-            })?
-    };
-    log_with_details(
-        "INFO",
-        "codex_runtime_marketplaces_ready",
-        "Codex runtime 预装插件资源准备完成",
-        json!({ "count": builtin_marketplaces.len() }),
-    );
     ensure_builtin_local_mcp_server_config(&codex_home, &local_mcp_url).inspect_err(|error| {
         log_runtime_start_failure("ensure_builtin_local_mcp_server_config", error);
     })?;
-    ensure_builtin_plugin_marketplaces_config(&codex_home, &builtin_marketplaces)?;
-    let builtin_plugins_fingerprint =
-        builtin_plugin_marketplaces_fingerprint(&builtin_marketplaces)?;
     let model_instructions_file =
         ensure_model_instructions_file(&codex_home).inspect_err(|error| {
             log_runtime_start_failure("ensure_model_instructions_file", error);
@@ -239,15 +222,6 @@ pub async fn codex_start_runtime(
         .inspect_err(|error| {
             log_runtime_start_failure("enable_runtime_features", error);
         })?;
-    sync_builtin_plugin_marketplaces(
-        &client,
-        &builtin_marketplaces,
-        builtin_plugins_fingerprint.as_deref(),
-    )
-    .await
-    .inspect_err(|error| {
-        log_runtime_start_failure("sync_builtin_plugin_marketplaces", error);
-    })?;
     app.emit(CODEX_EVENT_NAME, CodexUiEvent::RuntimeStarted)
         .map_err(|err| emit_error(err.to_string()))?;
     log_info("codex_runtime_started", "Codex runtime 启动并初始化完成");
@@ -688,6 +662,36 @@ pub async fn codex_uninstall_plugin(
     let response = runtime.client.uninstall_plugin(req.plugin_id).await?;
     audit(&runtime.codex_home, "plugin_uninstalled", response.clone());
     Ok(operation_result_from_value("插件卸载完成", response))
+}
+
+/// 切换单个插件是否启用。
+#[tauri::command]
+pub async fn codex_set_plugin_enabled(
+    req: PluginEnablementRequest,
+    state: State<'_, AppState>,
+) -> Result<CodexOperationResult, AppError> {
+    let runtime = runtime_client(&state).await?;
+    let response = runtime
+        .client
+        .set_plugin_enabled(req.plugin_id.clone(), req.enabled)
+        .await?;
+    audit(
+        &runtime.codex_home,
+        "plugin_enablement_changed",
+        json!({
+            "pluginId": req.plugin_id,
+            "enabled": req.enabled,
+            "response": response.clone()
+        }),
+    );
+    Ok(operation_result_from_value(
+        if req.enabled {
+            "插件已启用"
+        } else {
+            "插件已停用"
+        },
+        response,
+    ))
 }
 
 /// 添加远程插件市场。

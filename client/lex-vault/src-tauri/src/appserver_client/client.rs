@@ -22,8 +22,9 @@ use crate::appserver_client::model_config::{
 };
 use crate::appserver_client::params::{
     experimental_feature_enablement_params, legal_turn_start_params, legal_user_text,
-    thread_compact_start_params, thread_list_params, thread_read_params, thread_resume_params,
-    thread_start_params, turn_interrupt_params, RUNTIME_EXPERIMENTAL_FEATURES,
+    plugin_enablement_write_params, thread_compact_start_params, thread_list_params,
+    thread_read_params, thread_resume_params, thread_start_params, turn_interrupt_params,
+    RUNTIME_EXPERIMENTAL_FEATURES,
 };
 use crate::appserver_client::protocol::{
     CompletedTurnOutput, StartLegalTurnAttachment, StartLegalTurnRequest, ThreadListResponse,
@@ -405,6 +406,19 @@ impl AppServerJsonRpcClient {
             json!({
                 "pluginId": plugin_id
             }),
+        )
+        .await
+    }
+
+    /// 切换单个插件在当前 profile 配置中的启用状态。
+    pub async fn set_plugin_enabled(
+        &self,
+        plugin_id: String,
+        enabled: bool,
+    ) -> Result<Value, AppError> {
+        self.request(
+            "config/batchWrite",
+            plugin_enablement_write_params(plugin_id, enabled),
         )
         .await
     }

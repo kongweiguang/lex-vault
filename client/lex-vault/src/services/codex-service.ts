@@ -117,6 +117,13 @@ export function installCodexPlugin(marketplacePath: string, pluginName: string) 
   });
 }
 
+/** 切换单个插件是否启用。 */
+export function setCodexPluginEnabled(pluginId: string, enabled: boolean) {
+  return invoke<CodexOperationResult>("codex_set_plugin_enabled", {
+    req: { pluginId, enabled },
+  });
+}
+
 /** 卸载单个插件。 */
 export function uninstallCodexPlugin(pluginId: string) {
   return invoke<CodexOperationResult>("codex_uninstall_plugin", {

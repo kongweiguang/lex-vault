@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { renderAsync } from "docx-preview";
 import {
   ExternalLink,
   FileArchive,
   FileImage,
   FileText,
-  Music,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import "jit-viewer/style.css";
+import type { ViewerInstance } from "jit-viewer";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -50,18 +50,75 @@ export type UrlPreviewTarget = {
 /** 右侧通用预览目标，统一承载本机文件和聊天链接。 */
 export type PreviewTarget = FilePreviewTarget | UrlPreviewTarget;
 
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]);
 const MARKDOWN_EXTENSIONS = new Set(["md", "markdown"]);
-const PDF_EXTENSIONS = new Set(["pdf"]);
-const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "ogg", "m4a", "flac"]);
-const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "mkv", "avi"]);
 const ARCHIVE_EXTENSIONS = new Set(["zip", "rar", "7z", "tar", "gz"]);
-const DOCX_EXTENSIONS = new Set(["docx"]);
-const DEFAULT_PREVIEW_WIDTH = 560;
+const JIT_VIEWER_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "csv",
+  "html",
+  "htm",
+  "txt",
+  "md",
+  "markdown",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "svg",
+  "mp3",
+  "wav",
+  "ogg",
+  "m4a",
+  "flac",
+  "mp4",
+  "webm",
+  "mov",
+  "mkv",
+  "avi",
+  "ofd",
+  "dxf",
+  "xml",
+  "yml",
+  "yaml",
+  "java",
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "css",
+  "rs",
+  "toml",
+]);
+const DEFAULT_PREVIEW_WIDTH = 860;
 const MIN_PREVIEW_WIDTH = 360;
-const MAX_PREVIEW_WIDTH = 900;
+const MAX_PREVIEW_WIDTH = 1120;
+const PREVIEW_WORKSPACE_RESERVE = 320;
 /** 预览正文的最大可读宽度，宽屏时通过左右留白保持阅读节奏。 */
 const READER_MAX_WIDTH_CLASS = "max-w-5xl";
+
+/** 根据当前窗口算出打开预览时的默认宽度，优先完整露出常见 Word 页面。 */
+function defaultPreviewWidth() {
+  if (typeof window === "undefined") {
+    return DEFAULT_PREVIEW_WIDTH;
+  }
+  return Math.min(DEFAULT_PREVIEW_WIDTH, Math.max(MIN_PREVIEW_WIDTH, window.innerWidth - 32));
+}
+
+/** 拖拽时仍给主工作区保留基本操作空间，同时不把文档预览压得过窄。 */
+function maxPreviewWidth() {
+  if (typeof window === "undefined") {
+    return MAX_PREVIEW_WIDTH;
+  }
+  return Math.min(MAX_PREVIEW_WIDTH, Math.max(window.innerWidth - PREVIEW_WORKSPACE_RESERVE, MIN_PREVIEW_WIDTH));
+}
 
 /** 从文件名或后端字段中提取扩展名，保证不同入口的文件类型判断一致。 */
 function previewExtension(target?: FilePreviewTarget | null, content?: FileContent | null) {
@@ -108,7 +165,7 @@ function formatFileSize(size?: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** 根据后端返回或扩展名选择预览策略，DOCX 走内置渲染，其余复杂办公格式交给系统默认程序。 */
+/** 根据后端返回或扩展名选择预览策略，JitViewer 支持的格式统一走同一套渲染。 */
 export function previewKind(extension: string, text: boolean, serverKind?: FileContent["previewKind"]) {
   if (serverKind) {
     return serverKind;
@@ -119,23 +176,11 @@ export function previewKind(extension: string, text: boolean, serverKind?: FileC
   if (text) {
     return "text";
   }
-  if (IMAGE_EXTENSIONS.has(extension)) {
-    return "image";
-  }
-  if (PDF_EXTENSIONS.has(extension)) {
-    return "pdf";
-  }
-  if (AUDIO_EXTENSIONS.has(extension)) {
-    return "audio";
-  }
-  if (VIDEO_EXTENSIONS.has(extension)) {
-    return "video";
-  }
   if (ARCHIVE_EXTENSIONS.has(extension)) {
     return "archive";
   }
-  if (DOCX_EXTENSIONS.has(extension)) {
-    return "docx";
+  if (JIT_VIEWER_EXTENSIONS.has(extension)) {
+    return "jit-viewer";
   }
   return "external";
 }
@@ -159,7 +204,7 @@ export function FilePreviewPanel({
   target: PreviewTarget | null;
 }) {
   const panelRef = useRef<HTMLElement>(null);
-  const [panelWidth, setPanelWidth] = useState(DEFAULT_PREVIEW_WIDTH);
+  const [panelWidth, setPanelWidth] = useState(defaultPreviewWidth);
   const [content, setContent] = useState<FileContent | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState("");
@@ -208,6 +253,19 @@ export function FilePreviewPanel({
     };
   }, [fileTarget?.rootPath, fileTarget?.path]);
 
+  useEffect(() => {
+    if (!resizable) {
+      return;
+    }
+
+    const fitPanelWidth = () => {
+      setPanelWidth((current) => Math.min(Math.max(current, MIN_PREVIEW_WIDTH), maxPreviewWidth()));
+    };
+    fitPanelWidth();
+    window.addEventListener("resize", fitPanelWidth);
+    return () => window.removeEventListener("resize", fitPanelWidth);
+  }, [resizable]);
+
   const startResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!resizable) {
       return;
@@ -219,7 +277,7 @@ export function FilePreviewPanel({
 
     /** 拖拽左侧边缘时，鼠标向左扩大、向右缩小。 */
     const resize = (moveEvent: PointerEvent) => {
-      const maxWidth = Math.min(MAX_PREVIEW_WIDTH, Math.max(window.innerWidth - 520, MIN_PREVIEW_WIDTH));
+      const maxWidth = maxPreviewWidth();
       const nextWidth = Math.min(Math.max(startWidth + startX - moveEvent.clientX, MIN_PREVIEW_WIDTH), maxWidth);
       setPanelWidth(nextWidth);
     };
@@ -243,7 +301,7 @@ export function FilePreviewPanel({
   return (
     <aside
       className={cn(
-        "relative flex min-h-[520px] min-w-0 shrink-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm lg:min-h-0 lg:w-[min(42vw,640px)]",
+        "relative flex min-h-[520px] min-w-0 shrink-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm lg:min-h-0 lg:w-[min(48vw,760px)]",
         className,
       )}
       ref={panelRef}
@@ -257,7 +315,7 @@ export function FilePreviewPanel({
           role="separator"
         />
       ) : null}
-      <header className="flex min-h-[65px] shrink-0 items-center justify-between gap-3 border-b px-4">
+      <header className="flex min-h-[72px] shrink-0 items-center justify-between gap-3 border-b px-5">
         <div className="min-w-0">
           <h2 className="truncate text-base font-semibold text-slate-900">{target ? name : "文件预览"}</h2>
           <p className="mt-0.5 truncate text-xs text-slate-500">
@@ -275,7 +333,7 @@ export function FilePreviewPanel({
         </div>
       </header>
 
-      <div className="flex-1 overflow-auto bg-[#f8fafc] p-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-[#f3f6fb] p-2 lg:p-3">
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">正在读取文件</div>
         ) : errorText ? (
@@ -304,9 +362,9 @@ export function FilePreviewPanel({
 /** 在右侧面板内承载聊天链接，避免普通点击替换整个 Tauri WebView。 */
 function UrlPreviewBody({ target }: { target: UrlPreviewTarget }) {
   return (
-    <div className={cn("mx-auto h-full w-full", READER_MAX_WIDTH_CLASS)}>
+    <div className={cn("mx-auto h-full min-h-0 w-full", READER_MAX_WIDTH_CLASS)}>
       <iframe
-        className="h-full min-h-[480px] w-full rounded-md border bg-white"
+        className="h-full min-h-0 w-full rounded-md border bg-white"
         referrerPolicy="no-referrer"
         sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
         src={target.url}
@@ -337,8 +395,8 @@ function FilePreviewBody({
 }) {
   if (kind === "text") {
     return (
-      <div className={cn("mx-auto min-h-full w-full py-2", READER_MAX_WIDTH_CLASS)}>
-        <pre className="min-h-full w-full overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-white p-5 text-left text-sm leading-6 text-slate-800 shadow-sm">
+      <div className={cn("mx-auto h-full min-h-0 w-full py-2", READER_MAX_WIDTH_CLASS)}>
+        <pre className="h-full min-h-0 w-full overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-white p-5 text-left text-sm leading-6 text-slate-800 shadow-sm">
           {content?.content || "文件为空"}
         </pre>
       </div>
@@ -347,8 +405,8 @@ function FilePreviewBody({
 
   if (kind === "markdown") {
     return (
-      <div className={cn("mx-auto min-h-full w-full py-2", READER_MAX_WIDTH_CLASS)}>
-        <article className="chat-markdown min-h-full rounded-lg border bg-white p-5 text-left text-slate-800 shadow-sm">
+      <div className={cn("mx-auto h-full min-h-0 w-full py-2", READER_MAX_WIDTH_CLASS)}>
+        <article className="chat-markdown h-full min-h-0 overflow-auto rounded-lg border bg-white p-5 text-left text-slate-800 shadow-sm">
           {content?.content ? (
             <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
               {content.content}
@@ -361,46 +419,8 @@ function FilePreviewBody({
     );
   }
 
-  if (kind === "image") {
-    return (
-      <div className="flex h-full items-start justify-center py-2">
-        <img alt={name} className="max-h-full max-w-full rounded-md border bg-white object-contain shadow-sm" src={assetUrl} />
-      </div>
-    );
-  }
-
-  if (kind === "pdf") {
-    return (
-      <div className={cn("mx-auto h-full w-full", READER_MAX_WIDTH_CLASS)}>
-        <iframe className="h-full min-h-[480px] w-full rounded-md border bg-white" src={assetUrl} title={name} />
-      </div>
-    );
-  }
-
-  if (kind === "docx") {
-    return <DocxPreviewBody assetUrl={assetUrl} name={name} onOpenExternal={onOpenExternal} />;
-  }
-
-  if (kind === "audio") {
-    return (
-      <UnsupportedPreview
-        actionLabel="播放"
-        description={absolutePath}
-        icon={<Music className="size-8" />}
-        onOpenExternal={onOpenExternal}
-        title="音频文件"
-      >
-        <audio className="mt-4 w-full" controls src={assetUrl} />
-      </UnsupportedPreview>
-    );
-  }
-
-  if (kind === "video") {
-    return (
-      <div className="flex h-full items-start justify-center py-2">
-        <video className="max-h-full max-w-full rounded-md border bg-black shadow-sm" controls src={assetUrl} />
-      </div>
-    );
+  if (kind === "jit-viewer") {
+    return <JitViewerPreviewBody assetUrl={assetUrl} description={absolutePath} name={name} onOpenExternal={onOpenExternal} />;
   }
 
   return (
@@ -414,61 +434,68 @@ function FilePreviewBody({
   );
 }
 
-/** 使用 docx-preview 在右侧面板内渲染 DOCX，避免依赖本机 Office 转换器。 */
-function DocxPreviewBody({
+/** 使用 JitViewer 在右侧面板内统一渲染其支持的文件格式。 */
+function JitViewerPreviewBody({
   assetUrl,
+  description,
   name,
   onOpenExternal,
 }: {
   assetUrl: string;
+  description: string;
   name: string;
   onOpenExternal: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<ViewerInstance | null>(null);
   const [errorText, setErrorText] = useState("");
+  const extension = name.split(".").pop()?.toLowerCase() || "";
+  const isPptPreview = extension === "ppt" || extension === "pptx";
 
   useEffect(() => {
-    let cancelled = false;
     const container = containerRef.current;
     if (!container || !assetUrl) {
       return;
     }
 
+    let cancelled = false;
     container.innerHTML = "";
     setErrorText("");
+    viewerRef.current?.destroy();
 
-    void fetch(assetUrl)
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.arrayBuffer();
-      })
-      .then(async (buffer) => {
-        if (cancelled || !containerRef.current) {
+    void import("jit-viewer")
+      .then(async ({ createViewer }) => {
+        if (cancelled) {
           return;
         }
-        await renderAsync(buffer, containerRef.current, undefined, {
-          className: "docx-preview-render",
-          inWrapper: true,
-          ignoreWidth: false,
-          ignoreHeight: false,
-          breakPages: true,
+        viewerRef.current = createViewer({
+          className: "lex-vault-jit-viewer",
+          target: container,
+          file: assetUrl,
+          filename: name,
+          height: "100%",
+          locale: "zh-CN",
+          onError: () => {
+            setErrorText("文件预览加载失败，请使用系统默认程序打开");
+          },
+          toolbar: true,
+          width: "100%",
         });
+        await viewerRef.current.mount();
       })
       .catch(() => {
         if (!cancelled) {
-          setErrorText("DOCX 预览加载失败，请使用系统默认程序打开");
+          setErrorText("文件预览加载失败，请使用系统默认程序打开");
         }
       });
 
     return () => {
       cancelled = true;
-      if (containerRef.current) {
-        containerRef.current.innerHTML = "";
-      }
+      viewerRef.current?.destroy();
+      viewerRef.current = null;
+      container.innerHTML = "";
     };
-  }, [assetUrl]);
+  }, [assetUrl, name]);
 
   if (errorText) {
     return (
@@ -483,9 +510,18 @@ function DocxPreviewBody({
   }
 
   return (
-    <div className={cn("mx-auto min-h-full w-full py-2", READER_MAX_WIDTH_CLASS)}>
-      <div className="overflow-auto rounded-lg border bg-white p-4 shadow-sm">
-        <div className="docx-preview-host min-h-[480px]" ref={containerRef} />
+    <div className="h-full min-h-0 w-full">
+      <div
+        className={cn(
+          "relative h-full min-h-0 overflow-hidden rounded-lg border bg-white shadow-sm [&_.jv-viewer]:h-full [&_.jv-viewer]:rounded-none [&_.jv-viewer__content]:h-full [&_.jv-viewer__content]:bg-white [&_.pages-container]:py-3 [&_.pptx-preview-slide-wrapper]:mx-auto [&_.pptx-preview-slide-wrapper]:max-w-full",
+          isPptPreview && "[&_.jv-file-render--pptx]:h-full [&_.jv-file-render--pptx]:overflow-visible [&_.jv-viewer__content]:overflow-auto [&_.jv-viewer__render]:min-h-full [&_.pages-container]:min-h-full [&_.pages-container]:justify-start [&_.pptx-preview-wrapper]:h-full [&_.pptx-preview-wrapper]:overflow-auto [&_.vue-office-pptx-main]:h-full [&_.vue-office-pptx]:h-full",
+        )}
+      >
+        <div className="h-full min-h-0 w-full bg-white" ref={containerRef} title={description} />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-50 h-10 border-t bg-[var(--color-card)]"
+        />
       </div>
     </div>
   );

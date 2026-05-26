@@ -602,7 +602,7 @@ async fn wechat_status_update_preserves_existing_qr_ascii() {
 fn wechat_runtime_lookup_requires_existing_runtime_directory() {
     let temp_root =
         std::env::temp_dir().join(format!("lex-vault-wechat-runtime-{}", std::process::id()));
-    let runtime_root = temp_root.join("codex-primary-runtime");
+    let runtime_root = temp_root.join("agent-primary-runtime");
 
     std::fs::remove_dir_all(&temp_root).ok();
     std::fs::create_dir_all(&temp_root).expect("temp root should exist");

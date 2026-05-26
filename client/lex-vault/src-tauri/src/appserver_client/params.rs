@@ -194,6 +194,21 @@ pub fn experimental_feature_enablement_params(name: &str, enabled: bool) -> Valu
     })
 }
 
+pub fn plugin_enablement_write_params(plugin_id: String, enabled: bool) -> Value {
+    json!({
+        "edits": [{
+            "keyPath": "plugins",
+            "value": {
+                plugin_id: {
+                    "enabled": enabled
+                }
+            },
+            "mergeStrategy": "upsert"
+        }],
+        "reloadUserConfig": true
+    })
+}
+
 pub fn turn_interrupt_params(thread_id: String, turn_id: String) -> Value {
     json!({
         "threadId": thread_id,

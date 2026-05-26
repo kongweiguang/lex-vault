@@ -9,7 +9,6 @@ use super::{
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
-use uuid::Version::Nil;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
@@ -17,7 +16,7 @@ use zip::ZipWriter;
 #[test]
 fn install_runtime_bundle_from_archive_keeps_runtime_and_plugins() {
     let temp_root = temp_root("install");
-    let archive_path = temp_root.join("codex-primary-runtime.zip");
+    let archive_path = temp_root.join("agent-primary-runtime.zip");
     let lex_vault_home = temp_root.join(".lex-vault");
     create_demo_runtime_archive(&archive_path);
 
@@ -52,7 +51,7 @@ fn install_runtime_bundle_from_archive_keeps_runtime_and_plugins() {
     let _ = fs::remove_dir_all(temp_root);
 }
 
-/// 验证命名为 `codex-primary-runtime/` 的子目录可以被识别为真正 runtime 根目录。
+/// 验证命名为 `agent-primary-runtime/` 的子目录可以被识别为真正 runtime 根目录。
 #[test]
 fn resolve_extracted_runtime_root_accepts_named_child_directory() {
     let temp_root = temp_root("resolve-root");
@@ -64,6 +63,28 @@ fn resolve_extracted_runtime_root_accepts_named_child_directory() {
         resolve_extracted_runtime_root(&temp_root).expect("named runtime dir should resolve");
 
     assert_eq!(resolved, runtime_root);
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+/// 验证 zip 即使带有外层运行时目录包裹，也会直接展开到新的目标根。
+#[test]
+fn install_runtime_bundle_from_archive_strips_wrapping_runtime_directory() {
+    let temp_root = temp_root("install-wrapped");
+    let archive_path = temp_root.join("agent-primary-runtime.zip");
+    let lex_vault_home = temp_root.join(".lex-vault");
+    create_wrapped_runtime_archive(&archive_path);
+
+    let runtime_root =
+        install_runtime_bundle_from_archive(&archive_path, &lex_vault_home, &mut |_| {})
+            .expect("wrapped runtime archive should install");
+
+    assert!(is_valid_runtime_root(&runtime_root));
+    assert!(runtime_root.join("runtime.json").is_file());
+    assert!(
+        !runtime_root.join("agent-primary-runtime").exists(),
+        "wrapped directory should be stripped during direct extraction"
+    );
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -110,7 +131,7 @@ fn create_demo_runtime_archive(archive_path: &PathBuf) {
         .start_file("runtime.json", options)
         .expect("runtime json should start");
     writer
-        .write_all(br#"{"name":"codex-primary-runtime"}"#)
+        .write_all(br#"{"name":"agent-primary-runtime"}"#)
         .expect("runtime json should write");
     writer
         .start_file("dependencies/node/bin/node.exe", options)
@@ -142,6 +163,27 @@ fn create_demo_runtime_archive(archive_path: &PathBuf) {
     writer
         .write_all(br#"{"name":"documents","version":"1.0.0"}"#)
         .expect("plugin manifest should write");
+    writer.finish().expect("archive should finish");
+}
+
+/// 构造带顶层目录包裹的 runtime zip。
+fn create_wrapped_runtime_archive(archive_path: &PathBuf) {
+    if let Some(parent) = archive_path.parent() {
+        fs::create_dir_all(parent).expect("archive parent should be created");
+    }
+    let file = File::create(archive_path).expect("archive file should be created");
+    let mut writer = ZipWriter::new(file);
+    let options = SimpleFileOptions::default();
+
+    writer
+        .add_directory("agent-primary-runtime/dependencies/", options)
+        .expect("dependencies dir should be added");
+    writer
+        .start_file("agent-primary-runtime/runtime.json", options)
+        .expect("runtime json should start");
+    writer
+        .write_all(br#"{"name":"agent-primary-runtime"}"#)
+        .expect("runtime json should write");
     writer.finish().expect("archive should finish");
 }
 

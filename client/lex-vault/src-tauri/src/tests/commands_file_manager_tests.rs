@@ -223,18 +223,48 @@ fn remote_law_index_cache_path_uses_user_cache_file() {
 
 #[test]
 fn docx_extension_is_not_treated_as_text_file() {
-    assert!(is_docx_file(Some("docx")));
-    assert!(!is_docx_file(Some("doc")));
+    assert!(is_jit_viewer_file(Some("docx")));
+    assert!(is_jit_viewer_file(Some("doc")));
     assert!(!is_text_file(Some("docx"), 128));
 }
 
 #[test]
-fn legacy_office_preview_falls_back_to_external() {
-    let root = temp_root("legacy-office-external");
-    let file = root.join("旧版合同.doc");
-    fs::write(&file, "fake legacy office payload").expect("source file should be created");
+fn jit_viewer_preview_returns_asset_hint_for_supported_formats() {
+    let root = temp_root("jit-viewer-preview-kind");
+    let scenarios = [
+        ("合同审查意见.docx", "docx"),
+        ("庭审提纲.pdf", "pdf"),
+        ("证据清单.xlsx", "xlsx"),
+        ("汇报材料.pptx", "pptx"),
+        ("图纸.dxf", "dxf"),
+        ("版式.ofd", "ofd"),
+    ];
 
-    let preview = preview_file(&file, Some("doc"), 26);
+    for (name, extension) in scenarios {
+        let file = root.join(name);
+        fs::write(&file, format!("fake {extension} payload")).expect("source file should be created");
+
+        let preview = preview_file(&file, Some(extension), 32);
+
+        assert_eq!(preview.preview_kind, "jit-viewer");
+        assert_eq!(preview.converter, "jit-viewer");
+        assert_eq!(
+            preview.asset_path.as_deref(),
+            Some(file.to_string_lossy().as_ref())
+        );
+        assert!(preview.external_reason.is_none());
+    }
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn unknown_binary_preview_falls_back_to_external() {
+    let root = temp_root("unknown-external");
+    let file = root.join("未知格式.bin");
+    fs::write(&file, "fake payload").expect("source file should be created");
+
+    let preview = preview_file(&file, Some("bin"), 12);
 
     assert_eq!(preview.preview_kind, "external");
     assert_eq!(preview.converter, "none");
@@ -247,19 +277,19 @@ fn legacy_office_preview_falls_back_to_external() {
 }
 
 #[test]
-fn docx_preview_uses_frontend_renderer_hint() {
-    let root = temp_root("docx-preview-kind");
-    let file = root.join("合同审查意见.docx");
-    fs::write(&file, "fake docx payload").expect("source file should be created");
+fn archive_preview_stays_external_only() {
+    let root = temp_root("archive-external");
+    let file = root.join("材料压缩包.zip");
+    fs::write(&file, "fake zip payload").expect("source file should be created");
 
-    let preview = preview_file(&file, Some("docx"), 17);
+    let preview = preview_file(&file, Some("zip"), 18);
 
-    assert_eq!(preview.preview_kind, "docx");
-    assert_eq!(preview.converter, "docx-preview");
-    assert_eq!(
-        preview.asset_path.as_deref(),
-        Some(file.to_string_lossy().as_ref())
-    );
-    assert!(preview.external_reason.is_none());
+    assert_eq!(preview.preview_kind, "archive");
+    assert_eq!(preview.converter, "none");
+    assert!(preview.asset_path.is_none());
+    assert!(preview
+        .external_reason
+        .expect("archive fallback reason should exist")
+        .contains("系统默认程序"));
     let _ = fs::remove_dir_all(root);
 }

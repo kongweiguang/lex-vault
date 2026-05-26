@@ -117,6 +117,25 @@ export function fullDateTimeLabel(value?: string) {
   });
 }
 
+/** 只把最新一条用户消息之后的 assistant 视为当前轮次回复，避免新一轮开始时误点亮上一轮“正在思考”。 */
+export function latestAssistantIdAfterLatestUser(messages: ChatMessage[]) {
+  let lastUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      lastUserIndex = index;
+      break;
+    }
+  }
+
+  for (let index = messages.length - 1; index > lastUserIndex; index -= 1) {
+    if (messages[index]?.role === "assistant") {
+      return messages[index]?.id;
+    }
+  }
+
+  return undefined;
+}
+
 /** 将 assistant-ui 的结构化发送消息还原为后端需要的纯文本 message。 */
 export function appendMessageToText(message: AppendMessage) {
   return message.content

@@ -106,6 +106,15 @@ function toolMessageId(itemId: string | undefined, turnId: string | undefined, k
   return `tool-${itemId || `${turnId || "unknown"}-${kind}`}`;
 }
 
+/** 把底层工具类型和可选 toolName 转成面向用户的短标题，避免直接暴露内部事件名。 */
+function toolDisplayName(kind: string, toolName?: string) {
+  const normalizedToolName = toolName?.trim();
+  if (kind === "mcpToolCall") {
+    return normalizedToolName ? `调用工具：${normalizedToolName}工具` : "调用工具";
+  }
+  return `小隐工具：${kind}`;
+}
+
 /** 把工具开始事件挂到同一轮 assistant 回复上，保持一问一答只有一个响应框。 */
 export function upsertAssistantToolCall(messages: ChatMessage[], item: CodexToolCallInfo) {
   const toolCall: ChatToolCall = {
@@ -1098,12 +1107,13 @@ function codexToolCallFromItem(itemValue: unknown, turnId: string, itemIndex: nu
   const itemId = textFromKeys(item, ["id"]) || `${turnId}-history-tool-${itemIndex}`;
   const command = textFromKeys(item, ["command"]) || undefined;
   const path = textFromKeys(item, ["path", "cwd"]) || undefined;
+  const toolName = textFromKeys(item, ["toolName", "tool_name"]) || undefined;
   const statusText = textFromKeys(item, ["status"]);
   const failed = statusText === "failed" || statusText === "error";
   const running = statusText === "running" || statusText === "in_progress";
   return {
     id: toolMessageId(itemId, turnId, kind),
-    name: command ? `执行命令：${command}` : `小隐工具：${kind}`,
+    name: command ? `执行命令：${command}` : toolDisplayName(kind, toolName),
     kind,
     status: failed ? "error" : running ? "running" : "complete",
     command,

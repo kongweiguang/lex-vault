@@ -82,6 +82,11 @@ fn build_runtime_environment_injects_builtin_runtime_variables_and_prepends_path
         } else {
             "/opt/agent-primary-runtime".to_string()
         },
+        tools_directory: Some(if cfg!(windows) {
+            r"C:\Runtime\LexVault\tools".to_string()
+        } else {
+            "/opt/lex-vault/tools".to_string()
+        }),
         node_module_directories: vec![if cfg!(windows) {
             r"C:\Runtime\agent-primary-runtime\dependencies\node\node_modules".to_string()
         } else {
@@ -90,6 +95,11 @@ fn build_runtime_environment_injects_builtin_runtime_variables_and_prepends_path
         path_entries: vec![
             std::path::PathBuf::from(&python_dir),
             std::path::PathBuf::from(&node_dir),
+            std::path::PathBuf::from(if cfg!(windows) {
+                r"C:\Runtime\LexVault\tools"
+            } else {
+                "/opt/lex-vault/tools"
+            }),
         ],
     });
 
@@ -103,6 +113,9 @@ fn build_runtime_environment_injects_builtin_runtime_variables_and_prepends_path
         .iter()
         .any(|(key, value)| key == "LEX_VAULT_RUNTIME_ROOT"
             && value.contains("agent-primary-runtime")));
+    assert!(env
+        .iter()
+        .any(|(key, value)| { key == "LEX_VAULT_TOOLS_DIR" && value.contains("tools") }));
     assert!(env.iter().any(|(key, value)| {
         key == "NODE_REPL_NODE_MODULE_DIRS" && value.contains("node_modules")
     }));
@@ -112,6 +125,7 @@ fn build_runtime_environment_injects_builtin_runtime_variables_and_prepends_path
         .map(|(_, value)| value.clone())
         .expect("PATH should be injected");
     assert!(path_value.starts_with(&format!("{python_dir}{separator}{node_dir}{separator}")));
+    assert!(path_value.contains("tools"));
     assert!(path_value.contains(&existing_path));
 
     restore_path(original_path);

@@ -22,7 +22,7 @@ export function startCodexRuntime(profileId: string) {
   return invoke<void>("codex_start_runtime", { profileId });
 }
 
-/** 仅准备 Codex runtime 依赖包，供桌面端启动阶段提前检测和下载。 */
+/** 仅准备 Codex runtime 与知识库 graphify 依赖包，供桌面端启动阶段提前检测和下载。 */
 export function prepareCodexRuntimeBundle() {
   return invoke<void>("codex_prepare_runtime_bundle");
 }

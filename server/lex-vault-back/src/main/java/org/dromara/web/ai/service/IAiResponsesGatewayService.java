@@ -18,4 +18,22 @@ public interface IAiResponsesGatewayService {
      * @param response 原始响应
      */
     void responses(String body, HttpServletRequest request, HttpServletResponse response);
+
+    /**
+     * 处理 `/v1/chat/completions` 网关请求。
+     *
+     * @param body     请求体
+     * @param request  原始请求
+     * @param response 原始响应
+     */
+    void chatCompletions(String body, HttpServletRequest request, HttpServletResponse response);
+
+    /**
+     * 处理 `/anthropic/v1/messages` 网关请求。
+     *
+     * @param body     请求体
+     * @param request  原始请求
+     * @param response 原始响应
+     */
+    void anthropicMessages(String body, HttpServletRequest request, HttpServletResponse response);
 }

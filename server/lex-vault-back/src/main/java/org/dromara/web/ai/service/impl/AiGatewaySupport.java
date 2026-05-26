@@ -104,6 +104,48 @@ public final class AiGatewaySupport {
     }
 
     /**
+     * 构造固定 Chat Completions 上游请求体。
+     *
+     * @param body         原始请求体
+     * @param defaultModel 固定模型名
+     * @return 改写后的请求体
+     */
+    public static String buildFixedChatCompletionsBody(String body, String defaultModel) {
+        try {
+            JsonNode jsonNode = Json.node(body);
+            if (jsonNode instanceof ObjectNode objectNode) {
+                objectNode.put("model", defaultModel);
+                // MiniMax reasoning_split=true 会把思考内容拆到 reasoning_details，避免污染 content。
+                objectNode.put("reasoning_split", true);
+                return Json.str(objectNode);
+            }
+        } catch (Exception ignored) {
+            // 保留原始 body，让上游继续返回协议错误。
+        }
+        return body;
+    }
+
+    /**
+     * 构造固定 Anthropic Messages 上游请求体。
+     *
+     * @param body         原始请求体
+     * @param defaultModel 固定模型名
+     * @return 改写后的请求体
+     */
+    public static String buildFixedAnthropicMessagesBody(String body, String defaultModel) {
+        try {
+            JsonNode jsonNode = Json.node(body);
+            if (jsonNode instanceof ObjectNode objectNode) {
+                objectNode.put("model", defaultModel);
+                return Json.str(objectNode);
+            }
+        } catch (Exception ignored) {
+            // 保留原始 body，让上游继续返回协议错误。
+        }
+        return body;
+    }
+
+    /**
      * 从完整 JSON 响应中提取 usage。
      *
      * @param body 响应 JSON

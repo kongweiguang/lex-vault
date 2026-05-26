@@ -168,6 +168,31 @@ fn command_execution_item_started_is_a_tool() {
 }
 
 #[test]
+fn mcp_tool_call_item_started_uses_tool_name_title() {
+    let event = EventNormalizer::normalize(
+        "item/started",
+        json!({
+            "threadId": "thr_mcp_tool",
+            "turnId": "turn_mcp_tool",
+            "item": {
+                "id": "item_mcp_1",
+                "type": "mcpToolCall",
+                "toolName": "calendar_create_event"
+            }
+        }),
+    );
+
+    match event {
+        CodexUiEvent::ToolStarted { item } => {
+            assert_eq!(item.kind, "mcpToolCall");
+            assert_eq!(item.title, "调用工具：calendar_create_event工具");
+            assert_eq!(item.command, None);
+        }
+        _ => panic!("mcpToolCall item should be exposed as a tool"),
+    }
+}
+
+#[test]
 fn context_compaction_item_started_is_exposed_as_process_tool() {
     let event = EventNormalizer::normalize(
         "item/started",

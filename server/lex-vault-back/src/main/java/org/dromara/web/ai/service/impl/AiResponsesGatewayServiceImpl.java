@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeUnit;
 
 /**
  * OpenAI Responses 网关服务实现。
@@ -47,6 +48,41 @@ import java.util.concurrent.locks.ReentrantLock;
 @Service
 @RequiredArgsConstructor
 public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService {
+
+    /**
+     * 临时固定的 Chat Completions 上游地址。
+     */
+    private static final String CHAT_COMPLETIONS_BASE_URL = "https://api.minimaxi.com/v1/chat/completions";
+
+    /**
+     * 临时固定的 Chat Completions 默认模型。
+     */
+    private static final String CHAT_COMPLETIONS_DEFAULT_MODEL = "MiniMax-M2.7";
+
+    /**
+     * 临时固定的 Chat Completions 上游 key。
+     */
+    private static final String CHAT_COMPLETIONS_API_KEY = "sk-cp-ot6hMt65zIx8rHYFzcmGxEYERsMXJ3Nj6OOqH2r3Plp9KsuTwu8zY30cL024Oud8Ge5iAQfEX8dngBxdbmiasy8DWPNl6axRjGqr1unJPwkq6pibDYBAXAc";
+
+    /**
+     * 临时固定的 Anthropic Messages 上游地址。
+     */
+    private static final String ANTHROPIC_MESSAGES_BASE_URL = "https://api.minimaxi.com/anthropic/v1/messages";
+
+    /**
+     * 临时固定的 Anthropic Messages 默认模型。
+     */
+    private static final String ANTHROPIC_MESSAGES_DEFAULT_MODEL = "MiniMax-M2.7";
+
+    /**
+     * 临时固定的 Anthropic Messages 上游 key。
+     */
+    private static final String ANTHROPIC_MESSAGES_API_KEY = "sk-cp-ot6hMt65zIx8rHYFzcmGxEYERsMXJ3Nj6OOqH2r3Plp9KsuTwu8zY30cL024Oud8Ge5iAQfEX8dngBxdbmiasy8DWPNl6axRjGqr1unJPwkq6pibDYBAXAc";
+
+    /**
+     * Anthropic 兼容协议版本。
+     */
+    private static final String ANTHROPIC_VERSION = "2023-06-01";
 
     /**
      * HTTP 429 状态码。
@@ -76,7 +112,12 @@ public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService
     /**
      * HTTP 客户端。
      */
-    private static final OkHttpClient HTTP_CLIENT = new OkHttpClient();
+    private static final OkHttpClient HTTP_CLIENT = new OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.MINUTES)
+        .writeTimeout(5, TimeUnit.MINUTES)
+        .readTimeout(5, TimeUnit.MINUTES)
+        .callTimeout(5, TimeUnit.MINUTES)
+        .build();
 
     /**
      * JSON 请求体类型。
@@ -107,6 +148,32 @@ public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService
 //        } finally {
 //            lock.unlock();
 //        }
+    }
+
+    @Override
+    public void chatCompletions(String body, HttpServletRequest request, HttpServletResponse response) {
+        LoginUser loginUser = LoginHelper.getLoginUser();
+        if (loginUser == null || loginUser.getUserId() == null) {
+            throw new ServiceException("未获取到当前登录用户");
+        }
+        try {
+            proxyFixedChatCompletions(body, request, response);
+        } catch (IOException e) {
+            throw new ServiceException("OpenAI Chat Completions 上游网络请求失败：{}", e.getMessage());
+        }
+    }
+
+    @Override
+    public void anthropicMessages(String body, HttpServletRequest request, HttpServletResponse response) {
+        LoginUser loginUser = LoginHelper.getLoginUser();
+        if (loginUser == null || loginUser.getUserId() == null) {
+            throw new ServiceException("未获取到当前登录用户");
+        }
+        try {
+            proxyFixedAnthropicMessages(body, request, response);
+        } catch (IOException e) {
+            throw new ServiceException("Anthropic Messages 上游网络请求失败：{}", e.getMessage());
+        }
     }
 
     private void doResponses(String body, HttpServletRequest request, HttpServletResponse response, Long userId) {
@@ -160,6 +227,50 @@ public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService
         }
         if (lastIoException != null) {
             throw new ServiceException("OpenAI Responses 上游网络请求失败：{}", lastIoException.getMessage());
+        }
+    }
+
+    private void proxyFixedChatCompletions(String body,
+                                           HttpServletRequest request,
+                                           HttpServletResponse response) throws IOException {
+        String rewrittenBody = AiGatewaySupport.buildFixedChatCompletionsBody(body, CHAT_COMPLETIONS_DEFAULT_MODEL);
+        Request upstreamRequest = buildFixedChatCompletionsRequest(rewrittenBody, request);
+        try (Response upstreamResponse = HTTP_CLIENT.newCall(upstreamRequest).execute()) {
+            response.setStatus(upstreamResponse.code());
+            copyResponseHeaders(upstreamResponse, response);
+            ResponseBody responseBody = upstreamResponse.body();
+            if (responseBody == null) {
+                response.flushBuffer();
+                return;
+            }
+            try (InputStream inputStream = responseBody.byteStream();
+                 OutputStream outputStream = response.getOutputStream()) {
+                inputStream.transferTo(outputStream);
+                outputStream.flush();
+            }
+            response.flushBuffer();
+        }
+    }
+
+    private void proxyFixedAnthropicMessages(String body,
+                                             HttpServletRequest request,
+                                             HttpServletResponse response) throws IOException {
+        String rewrittenBody = AiGatewaySupport.buildFixedAnthropicMessagesBody(body, ANTHROPIC_MESSAGES_DEFAULT_MODEL);
+        Request upstreamRequest = buildFixedAnthropicMessagesRequest(rewrittenBody, request);
+        try (Response upstreamResponse = HTTP_CLIENT.newCall(upstreamRequest).execute()) {
+            response.setStatus(upstreamResponse.code());
+            copyResponseHeaders(upstreamResponse, response);
+            ResponseBody responseBody = upstreamResponse.body();
+            if (responseBody == null) {
+                response.flushBuffer();
+                return;
+            }
+            try (InputStream inputStream = responseBody.byteStream();
+                 OutputStream outputStream = response.getOutputStream()) {
+                inputStream.transferTo(outputStream);
+                outputStream.flush();
+            }
+            response.flushBuffer();
         }
     }
 
@@ -257,6 +368,41 @@ public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService
         }
         if (StringUtils.isNotBlank(upstream.getApiKey())) {
             builder.header(HttpHeaders.AUTHORIZATION, "Bearer " + upstream.getApiKey());
+        }
+        return builder.build();
+    }
+
+    private Request buildFixedChatCompletionsRequest(String body, HttpServletRequest request) {
+        Request.Builder builder = new Request.Builder()
+            .url(CHAT_COMPLETIONS_BASE_URL)
+            .post(RequestBody.create(JSON_MEDIA_TYPE, body))
+            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + CHAT_COMPLETIONS_API_KEY);
+
+        String accept = request.getHeader(HttpHeaders.ACCEPT);
+        if (StringUtils.isNotBlank(accept)) {
+            builder.header(HttpHeaders.ACCEPT, accept);
+        }
+        return builder.build();
+    }
+
+    private Request buildFixedAnthropicMessagesRequest(String body, HttpServletRequest request) {
+        Request.Builder builder = new Request.Builder()
+            .url(ANTHROPIC_MESSAGES_BASE_URL)
+            .post(RequestBody.create(JSON_MEDIA_TYPE, body))
+            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .header("x-api-key", ANTHROPIC_MESSAGES_API_KEY)
+            .header("anthropic-version", request.getHeader("anthropic-version") != null
+                ? request.getHeader("anthropic-version")
+                : ANTHROPIC_VERSION);
+
+        String accept = request.getHeader(HttpHeaders.ACCEPT);
+        if (StringUtils.isNotBlank(accept)) {
+            builder.header(HttpHeaders.ACCEPT, accept);
+        }
+        String anthropicBeta = request.getHeader("anthropic-beta");
+        if (StringUtils.isNotBlank(anthropicBeta)) {
+            builder.header("anthropic-beta", anthropicBeta);
         }
         return builder.build();
     }

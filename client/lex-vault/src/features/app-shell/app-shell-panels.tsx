@@ -39,6 +39,8 @@ type SharedChatPanelProps = {
   chatPanelKey: string;
   /** 当前会话的消息列表。 */
   messages: ChatMessage[];
+  /** 当前会话顶部的短暂运行时提示。 */
+  transientNotice?: { id: string; message: string } | null;
   /** 右侧预览面板是否折叠。 */
   isPreviewCollapsed: boolean;
   /** 对话框知识库弹层展示的文件库来源。 */
@@ -354,6 +356,7 @@ export function CaseWorkspaceSection({
   isHydratingHistory,
   knowledgeBaseSources,
   messages,
+  transientNotice,
   selectedCaseId,
   selectedSessionId,
   selectedSkillName,
@@ -425,6 +428,7 @@ export function CaseWorkspaceSection({
         selectedSkillName={selectedSkillName}
         sessionId={sessionId}
         skillOptions={skillOptions}
+        transientNotice={transientNotice}
         title={title}
       />
     </>
@@ -462,6 +466,7 @@ export function ChatWorkspaceSection({
   isHydratingHistory,
   knowledgeBaseSources,
   messages,
+  transientNotice,
   selectedSessionId,
   sessionId,
   sessions,
@@ -506,6 +511,7 @@ export function ChatWorkspaceSection({
         pluginOptions={pluginOptions}
         selectedPluginIds={selectedPluginIds}
         sessionId={sessionId}
+        transientNotice={transientNotice}
         title={title}
       />
     </>

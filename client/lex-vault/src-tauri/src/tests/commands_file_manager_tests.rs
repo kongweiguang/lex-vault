@@ -242,7 +242,8 @@ fn jit_viewer_preview_returns_asset_hint_for_supported_formats() {
 
     for (name, extension) in scenarios {
         let file = root.join(name);
-        fs::write(&file, format!("fake {extension} payload")).expect("source file should be created");
+        fs::write(&file, format!("fake {extension} payload"))
+            .expect("source file should be created");
 
         let preview = preview_file(&file, Some(extension), 32);
 
@@ -291,5 +292,39 @@ fn archive_preview_stays_external_only() {
         .external_reason
         .expect("archive fallback reason should exist")
         .contains("系统默认程序"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn list_native_files_hides_graphify_out_directory() {
+    let root = temp_root("graphify-out-hidden");
+    fs::create_dir_all(root.join("graphify-out")).expect("graphify-out should be created");
+    fs::write(root.join("visible.txt"), "ok").expect("visible file should be created");
+
+    let nodes = list_native_files(root.to_string_lossy().to_string())
+        .expect("listing visible files should succeed");
+
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0].name, "visible.txt");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn read_native_file_rejects_graphify_out_path() {
+    let root = temp_root("graphify-out-read");
+    fs::create_dir_all(root.join("graphify-out")).expect("graphify-out should be created");
+    fs::write(root.join("graphify-out/index.md"), "secret").expect("index should be created");
+
+    let result = tauri::async_runtime::block_on(read_native_file(
+        root.to_string_lossy().to_string(),
+        "graphify-out/index.md".to_string(),
+    ));
+
+    let error = match result {
+        Ok(_) => panic!("graphify-out should be rejected"),
+        Err(error) => error,
+    };
+
+    assert!(error.contains("隐藏目录或文件"));
     let _ = fs::remove_dir_all(root);
 }

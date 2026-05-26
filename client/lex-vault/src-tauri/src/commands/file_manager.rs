@@ -39,9 +39,9 @@ const TEXT_EXTENSIONS: &[&str] = &[
 /// 统一交给前端 JitViewer 渲染的扩展名。
 const JIT_VIEWER_EXTENSIONS: &[&str] = &[
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "html", "htm", "txt", "md",
-    "markdown", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "mp3", "wav", "ogg",
-    "m4a", "flac", "mp4", "webm", "mov", "mkv", "avi", "ofd", "dxf", "xml", "yml", "yaml",
-    "java", "ts", "tsx", "js", "jsx", "css", "rs", "toml",
+    "markdown", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "mp3", "wav", "ogg", "m4a",
+    "flac", "mp4", "webm", "mov", "mkv", "avi", "ofd", "dxf", "xml", "yml", "yaml", "java", "ts",
+    "tsx", "js", "jsx", "css", "rs", "toml",
 ];
 
 /// Lex Vault 用户级缓存目录名。
@@ -71,7 +71,7 @@ pub struct NativeFileNode {
 }
 
 /// 前端文件内容预览结构，字段名与 TypeScript FileContent 保持一致。
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeFileContent {
     /// 文件名称。
@@ -133,6 +133,7 @@ pub struct RemoteLawIndexPayload {
 #[tauri::command]
 pub fn list_native_files(root_path: String) -> Result<Vec<NativeFileNode>, String> {
     let root = normalize_root(&root_path)?;
+    ensure_manageable_root(&root)?;
     fs::create_dir_all(&root).map_err(|err| format!("创建目录失败：{err}"))?;
     list_children(&root, &root).map_err(|err| format!("读取目录失败：{err}"))
 }
@@ -661,6 +662,7 @@ fn resolve_inside(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
     if !resolved.starts_with(root) || resolved == root {
         return Err("非法文件路径".to_string());
     }
+    ensure_manageable_path(root, &resolved)?;
     Ok(resolved)
 }
 
@@ -811,7 +813,44 @@ fn to_file_node(root: &Path, path: &Path) -> io::Result<NativeFileNode> {
 }
 
 fn is_visible(path: &Path) -> bool {
-    !file_name(path).starts_with('.')
+    is_manageable_name(&file_name(path))
+}
+
+fn ensure_manageable_root(root: &Path) -> Result<(), String> {
+    if root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(is_manageable_name)
+        .map(|visible| !visible)
+        .unwrap_or(false)
+    {
+        return Err("隐藏目录不允许通过文件管理访问".to_string());
+    }
+    Ok(())
+}
+
+fn ensure_manageable_path(root: &Path, path: &Path) -> Result<(), String> {
+    if path
+        .strip_prefix(root)
+        .ok()
+        .into_iter()
+        .flat_map(|relative| relative.components())
+        .any(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .map(is_manageable_name)
+                .map(|visible| !visible)
+                .unwrap_or(false)
+        })
+    {
+        return Err("隐藏目录或文件不允许通过文件管理访问".to_string());
+    }
+    Ok(())
+}
+
+fn is_manageable_name(name: &str) -> bool {
+    !name.starts_with('.') && !name.eq_ignore_ascii_case("graphify-out")
 }
 
 fn file_name(path: &Path) -> String {

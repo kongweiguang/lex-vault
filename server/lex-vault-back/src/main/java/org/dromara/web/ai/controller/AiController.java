@@ -26,4 +26,20 @@ public class AiController {
     public void responses(@RequestBody String body, HttpServletRequest request, HttpServletResponse response) {
         aiResponsesGatewayService.responses(body, request, response);
     }
+
+    /**
+     * OpenAI Chat Completions API 代理入口。
+     */
+    @PostMapping(value = "/v1/chat/completions", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public void chatCompletions(@RequestBody String body, HttpServletRequest request, HttpServletResponse response) {
+        aiResponsesGatewayService.chatCompletions(body, request, response);
+    }
+
+    /**
+     * Anthropic Messages API 代理入口。
+     */
+    @PostMapping(value = "/anthropic/v1/messages", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public void anthropicMessages(@RequestBody String body, HttpServletRequest request, HttpServletResponse response) {
+        aiResponsesGatewayService.anthropicMessages(body, request, response);
+    }
 }

@@ -26,6 +26,7 @@ import {
   sortSessionSummariesByUpdatedAt,
 } from "@/features/chat/app-chat-helpers";
 import { createChatHistoryManager } from "@/features/chat/chat-history-manager";
+import { shouldHydrateScopedHistorySelection } from "@/features/chat/history-selection";
 import { createCodexEventHandler } from "@/features/chat/codex-event-handler";
 import { createChatTurnManager } from "@/features/chat/chat-turn-manager";
 import { createLibraryWorkspaceManager } from "@/features/library/library-workspace-manager";
@@ -96,6 +97,7 @@ const CODEX_PROFILE_ID = "lex-vault";
 
 /** 每个左侧工作区独立保存右侧预览目标，避免切换 tab 后沿用其他工作区的文件。 */
 type PreviewTargetByNav = Partial<Record<NavKey, PreviewTarget | null>>;
+type SessionTransientNotice = { id: string; message: string };
 
 function App() {
   const [fileImportState, setFileImportState] = useState<AppFileImportState>({
@@ -142,6 +144,7 @@ function App() {
   const [sessionContexts, setSessionContexts] = useState<Record<string, SessionContext>>({});
   const [threadBySession, setThreadBySession] = useState<Record<string, string>>({});
   const [runningSessionByThread, setRunningSessionByThread] = useState<Record<string, string>>({});
+  const [transientNoticeBySession, setTransientNoticeBySession] = useState<Record<string, SessionTransientNotice | null>>({});
   // 案件材料右键加入聊天框后，先挂在当前会话草稿上，发送时再进入 prompt。
   const [contextAttachmentsBySession, setContextAttachmentsBySession] = useState<Record<string, ChatAttachment[]>>({});
   /** 案件对话当前不再暴露项目内置专项 skill，未选择时按通用律师任务发送。 */
@@ -180,6 +183,7 @@ function App() {
   const selectedContextAttachments = contextAttachmentsBySession[selectedSessionId] ?? [];
   const selectedPluginIds = selectedPluginIdsBySession[selectedSessionId] ?? [];
   const selectedPendingApprovals = pendingApprovalsBySession[selectedSessionId] ?? [];
+  const selectedTransientNotice = transientNoticeBySession[selectedSessionId] ?? null;
   const isStreaming = streamingSessionId === selectedSessionId;
   const canCompactCurrentSession = Boolean(threadBySession[selectedSessionId]);
   const selectedCase = cases.find((caseItem) => caseItem.id === selectedCaseId) ?? null;
@@ -206,10 +210,11 @@ function App() {
   // 当前运行中的 turn 只在内存中跟踪，用于停止输出时调用 app-server 的 turn/interrupt。
   const activeTurnBySessionRef = useRef<Record<string, { threadId: string; turnId: string }>>({});
   const interruptedTurnIdsRef = useRef<Set<string>>(new Set());
-  // 应用启动阶段只执行一次“准备 runtime 包 -> 校验登录态 -> 预热 runtime”的串行流程。
+  // 应用启动阶段只执行一次“准备主 runtime 与知识库 runtime -> 校验登录态 -> 预热 runtime”的串行流程。
   const startupRuntimeBootstrapRef = useRef(false);
   const shownUpdateDialogVersionRef = useRef<string | null>(null);
   const selectedPluginIdsBySessionRef = useRef(selectedPluginIdsBySession);
+  const transientNoticeTimeoutsRef = useRef<Record<string, number>>({});
   const workspaceRootRef = useRef(workspaceRoot);
   const selectedCasePathRef = useRef(selectedCasePath);
 
@@ -236,6 +241,10 @@ function App() {
   useEffect(() => {
     selectedPluginIdsBySessionRef.current = selectedPluginIdsBySession;
   }, [selectedPluginIdsBySession]);
+
+  useEffect(() => () => {
+    Object.values(transientNoticeTimeoutsRef.current).forEach((timer) => window.clearTimeout(timer));
+  }, []);
 
   workspaceRootRef.current = workspaceRoot;
   selectedCasePathRef.current = selectedCasePath;
@@ -496,6 +505,27 @@ function App() {
       [nav]: target,
     }));
   }, []);
+  const showTransientNotice = useCallback((sessionId: string, message: string) => {
+    const noticeId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const existingTimer = transientNoticeTimeoutsRef.current[sessionId];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+    }
+    setTransientNoticeBySession((current) => ({
+      ...current,
+      [sessionId]: { id: noticeId, message },
+    }));
+    transientNoticeTimeoutsRef.current[sessionId] = window.setTimeout(() => {
+      setTransientNoticeBySession((current) => {
+        if (current[sessionId]?.id !== noticeId) {
+          return current;
+        }
+        const { [sessionId]: _removed, ...rest } = current;
+        return rest;
+      });
+      delete transientNoticeTimeoutsRef.current[sessionId];
+    }, 3600);
+  }, []);
   const chatHistoryManager = useMemo(() => createChatHistoryManager({
     codeProfileId: CODEX_PROFILE_ID,
     getMessagesBySession: () => messagesBySessionRef.current,
@@ -632,6 +662,9 @@ function App() {
       if (selectedSessionId !== scopedSessionId) {
         setSelectedSessionId(scopedSessionId);
       }
+      if (shouldHydrateScopedHistorySelection(messagesBySession, scopedSessionId, hydratingHistorySessionId)) {
+        void chatHistoryManager.hydrateCodexThread(scopedSessionId, activeSessionContext);
+      }
       return;
     }
 
@@ -652,7 +685,17 @@ function App() {
 
     const nextSessionId = createSessionId();
     chatHistoryManager.rememberSelectedSession(nextSessionId, activeSessionContext);
-  }, [activeSessionContext, activeSessions, chatHistoryManager, loadedChatScopes, selectedSessionId, selectedSessionIdByScope, sessionContexts]);
+  }, [
+    activeSessionContext,
+    activeSessions,
+    chatHistoryManager,
+    hydratingHistorySessionId,
+    loadedChatScopes,
+    messagesBySession,
+    selectedSessionId,
+    selectedSessionIdByScope,
+    sessionContexts,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -689,7 +732,7 @@ function App() {
 
   const bootstrapRuntimeOnLaunch = useCallback(async () => {
     try {
-      // 启动应用先独立校验 runtime 包，避免未登录时完全看不到下载进度。
+      // 启动应用先独立校验主 runtime 与知识库 runtime，避免未登录时完全看不到下载进度。
       await prepareCodexRuntimeBundle();
     } catch (error) {
       console.error("应用启动时准备 Codex runtime 依赖包失败", error);
@@ -1004,8 +1047,9 @@ function App() {
     sessionContextsRef,
     setMessagesBySession,
     setPendingApprovalsBySession,
+    showTransientNotice,
     setStreamingSessionId,
-  }), [chatHistoryManager, resolveEventSessionId]);
+  }), [chatHistoryManager, resolveEventSessionId, showTransientNotice]);
 
   /** 用户点击历史列表失败提示中的重试时，直接重新读取普通对话作用域。 */
   const retryChatHistoryList = useCallback(() => {
@@ -1186,6 +1230,7 @@ function App() {
             sessionId={selectedSessionId}
             sessions={normalizedCaseSessions}
             skillOptions={[]}
+            transientNotice={selectedTransientNotice}
             title={selectedSessionTitle}
           />
         ) : isChatTab ? (
@@ -1222,6 +1267,7 @@ function App() {
             selectedSessionId={selectedSessionId}
             sessionId={selectedSessionId}
             sessions={normalizedSessions}
+            transientNotice={selectedTransientNotice}
             title={selectedSessionTitle}
           />
         ) : isCalendarTab ? (

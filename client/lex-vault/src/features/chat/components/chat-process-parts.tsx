@@ -45,6 +45,9 @@ function processPayloadFromPart(args: unknown, result: unknown): ProcessPayload 
 function processStepLabel(step: ProcessStep) {
   const rawTarget = step.command || step.path || step.name || step.kind || "工具调用";
   const target = rawTarget.replace(/\bCodex\b/gi, AGENT_DISPLAY_NAME);
+  if (step.kind === "mcpToolCall") {
+    return `${AGENT_DISPLAY_NAME}${step.status === "running" ? "正在" : "已"}${target}`;
+  }
   if (step.kind === "commandExecution") {
     return `${step.status === "running" ? "正在运行" : "已运行"} ${target}`;
   }
@@ -108,12 +111,10 @@ function ProcessStepCard({ step }: { step: ProcessStep }) {
 function ProcessGroupPart({
   args,
   result,
-  isError,
   status,
 }: {
   args: unknown;
   result: unknown;
-  isError?: boolean;
   status: ToolCallMessagePartProps["status"];
 }) {
   const { processText, processMeta, processItems, steps } = processPayloadFromPart(args, result);
@@ -152,8 +153,6 @@ function ProcessGroupPart({
         <div className="flex min-w-0 items-center gap-2">
           {running ? (
             <Loader2 className="size-3.5 shrink-0 animate-spin" />
-          ) : isError ? (
-            <AlertCircle className="size-3.5 shrink-0 text-rose-600" />
           ) : (
             <span className="size-1.5 shrink-0 rounded-full bg-[color:var(--color-muted-foreground)]" />
           )}
@@ -214,7 +213,7 @@ export function ToolCallPart({
   status,
 }: ToolCallMessagePartProps) {
   if (toolName === AGENT_PROCESS_TOOL_NAME || toolName === "codex_process") {
-    return <ProcessGroupPart args={args} isError={isError} result={result} status={status} />;
+    return <ProcessGroupPart args={args} result={result} status={status} />;
   }
 
   const title = String(args?.title || toolName || "工具调用");

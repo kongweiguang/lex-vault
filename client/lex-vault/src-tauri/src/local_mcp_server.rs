@@ -31,6 +31,10 @@ use crate::commands::local_data::calendar::{
     CreateRecurringCalendarRuleInput, ListCalendarEventsQuery, PreviewRecurringCalendarRuleInput,
     SearchCalendarConflictsQuery, UpdateCalendarEventInput,
 };
+use crate::knowledge_runtime::{
+    build_case_graphify_index, case_graphify_status, read_case_graphify_index,
+    search_case_graphify_index,
+};
 
 /// 本地 MCP server 仅监听回环地址，避免暴露到局域网。
 const LOCAL_MCP_BIND_HOST: &str = "127.0.0.1";
@@ -377,6 +381,48 @@ struct CalendarFindConflictsArgs {
     exclude_event_id: Option<String>,
 }
 
+/// 查询案件 graphify 索引状态的工具参数。
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct CaseGraphifyStatusArgs {
+    /// 案件目录绝对路径。
+    case_path: String,
+}
+
+/// 构建案件 graphify 索引的工具参数。
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct CaseGraphifyBuildArgs {
+    /// 案件目录绝对路径。
+    case_path: String,
+    /// 是否强制重建。
+    #[serde(default)]
+    force: bool,
+}
+
+/// 检索案件 graphify 索引的工具参数。
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct CaseGraphifySearchArgs {
+    /// 案件目录绝对路径。
+    case_path: String,
+    /// 检索关键词或问题。
+    query: String,
+    /// 最多返回条数，默认 5。
+    #[serde(default = "default_graphify_search_limit")]
+    limit: usize,
+}
+
+/// 读取案件 graphify wiki 页面的工具参数。
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct CaseGraphifyReadArgs {
+    /// 案件目录绝对路径。
+    case_path: String,
+    /// 相对索引根目录的 wiki 页面路径；为空时默认读取入口页。
+    path: Option<String>,
+}
+
 /// MCP 工具中的提醒规则参数。
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(untagged)]
@@ -518,6 +564,10 @@ fn default_recurring_channels() -> Vec<CalendarReminderChannelArg> {
     ]
 }
 
+fn default_graphify_search_limit() -> usize {
+    5
+}
+
 fn default_ai_event_reminders(
     reminders: Option<Vec<CalendarReminderArg>>,
 ) -> Option<Vec<crate::commands::local_data::calendar::CalendarReminderRule>> {
@@ -611,6 +661,29 @@ impl LocalMcpServer {
             ));
         }
         Ok(trimmed.to_string())
+    }
+
+    /// 校验并返回案件目录绝对路径。
+    fn require_case_path(
+        &self,
+        value: &str,
+        tool_name: &'static str,
+    ) -> Result<PathBuf, ErrorData> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(ErrorData::invalid_params(
+                format!("{tool_name} 缺少 casePath"),
+                None,
+            ));
+        }
+        let path = PathBuf::from(trimmed);
+        if !path.is_dir() {
+            return Err(ErrorData::invalid_params(
+                format!("{tool_name} 的 casePath 不存在"),
+                Some(json!({ "detail": trimmed })),
+            ));
+        }
+        Ok(path)
     }
 }
 
@@ -926,12 +999,72 @@ impl LocalMcpServer {
             .map_err(|err| self.internal_error("删除日历事项失败", err))?;
         self.to_tool_text(json!({ "deleted": true, "eventId": event_id }))
     }
+
+    /// 查询当前案件 graphify 索引是否存在、是否过期，以及 wiki 入口位置。
+    #[tool(
+        name = "case_graphify_status",
+        description = "查询当前案件 graphify 索引是否存在、是否过期、当前索引模式以及入口位置。适用于判断案件材料是否已经完成 graphify 可检索索引，或是否退回到了本地文本保底索引。"
+    )]
+    fn case_graphify_status(
+        &self,
+        Parameters(args): Parameters<CaseGraphifyStatusArgs>,
+    ) -> Result<String, ErrorData> {
+        let case_path = self.require_case_path(&args.case_path, "case_graphify_status")?;
+        let status = case_graphify_status(&case_path)
+            .map_err(|err| self.internal_error("查询案件知识库状态失败", err.message))?;
+        self.to_tool_text(status)
+    }
+
+    /// 为当前案件构建或重建 graphify wiki/图谱索引。
+    #[tool(
+        name = "case_graphify_build",
+        description = "为当前案件构建或重建 graphify 材料索引。默认会调用 graphify extract 解析文本、PDF、图片、docx、xlsx；若网关或 LLM 调用失败，会明确退回到本地文本保底索引。"
+    )]
+    fn case_graphify_build(
+        &self,
+        Parameters(args): Parameters<CaseGraphifyBuildArgs>,
+    ) -> Result<String, ErrorData> {
+        let case_path = self.require_case_path(&args.case_path, "case_graphify_build")?;
+        let result = build_case_graphify_index(&case_path, args.force)
+            .map_err(|err| self.internal_error("构建案件知识库失败", err.message))?;
+        self.to_tool_text(result)
+    }
+
+    /// 在当前案件的 graphify 索引中检索问题相关的 wiki 片段。
+    #[tool(
+        name = "case_graphify_search",
+        description = "在当前案件的 graphify 索引中检索问题相关的片段。会优先搜索 graphify 产出的 wiki、GRAPH_REPORT.md 和 JSON 文本索引；若返回索引缺失，应先调用 case_graphify_build。"
+    )]
+    fn case_graphify_search(
+        &self,
+        Parameters(args): Parameters<CaseGraphifySearchArgs>,
+    ) -> Result<String, ErrorData> {
+        let case_path = self.require_case_path(&args.case_path, "case_graphify_search")?;
+        let hits = search_case_graphify_index(&case_path, &args.query, args.limit)
+            .map_err(|err| self.internal_error("检索案件知识库失败", err.message))?;
+        self.to_tool_text(hits)
+    }
+
+    /// 读取当前案件 graphify 索引的入口页或指定 wiki 页面正文。
+    #[tool(
+        name = "case_graphify_read",
+        description = "读取当前案件 graphify 索引的入口页或指定索引文件正文。适用于在搜索命中后进一步读取整页内容或查看 graphify 报告。"
+    )]
+    fn case_graphify_read(
+        &self,
+        Parameters(args): Parameters<CaseGraphifyReadArgs>,
+    ) -> Result<String, ErrorData> {
+        let case_path = self.require_case_path(&args.case_path, "case_graphify_read")?;
+        let result = read_case_graphify_index(&case_path, args.path.as_deref())
+            .map_err(|err| self.internal_error("读取案件知识库内容失败", err.message))?;
+        self.to_tool_text(result)
+    }
 }
 
 #[tool_handler(
     name = "lex_vault_local",
     version = "0.1.2",
-    instructions = "用于访问 Lex Vault 当前工作空间中的本地能力；提供律师日历事项查询、创建、改期、取消、完成，以及周期日程规则预览和创建工具。一次性提醒创建普通日历事项，重复提醒创建周期日程规则。"
+    instructions = "用于访问 Lex Vault 当前工作空间中的本地能力；提供律师日历事项查询、创建、改期、取消、完成，以及周期日程规则预览和创建工具，也提供案件 graphify 知识库索引的状态查询、构建、检索和读取工具。一次性提醒创建普通日历事项，重复提醒创建周期日程规则；分析案件材料时优先使用 graphify 工具读取材料索引，并先检查当前索引模式是否为 graphify-extract 还是 fallback-local-text。"
 )]
 impl ServerHandler for LocalMcpServer {}
 

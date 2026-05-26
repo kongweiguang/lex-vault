@@ -14,6 +14,19 @@ import {
 
 const WINDOWS_MARKDOWN_PATH_PATTERN = /^\/?[a-zA-Z]:[\\/]/;
 const UNC_MARKDOWN_PATH_PATTERN = /^(\\\\|\/\/)[^\\/]+[\\/][^\\/]+/;
+const OAI_MEM_CITATION_BLOCK_PATTERN = /<oai-mem-citation>[\s\S]*?<\/oai-mem-citation>/gi;
+const OAI_MEM_CITATION_FALLBACK_PATTERN = /```[\s\S]*?(?:citation_entries|rollout_ids|MEMORY\.md:\d+-\d+|rollout_summaries\/)[\s\S]*?```/gi;
+
+/** 清理不应面向用户展示的内部 memory 引用块，避免被 Markdown 渲染成黑色代码框。 */
+function sanitizeAssistantMarkdown(text?: string) {
+  if (!text) {
+    return "";
+  }
+  return text
+    .replace(OAI_MEM_CITATION_BLOCK_PATTERN, "")
+    .replace(OAI_MEM_CITATION_FALLBACK_PATTERN, "")
+    .trim();
+}
 
 /** 解码 Markdown 链接中的本机文件路径，兼容 Codex 输出的 </c:/...> 和 file:///c:/...。 */
 export function normalizeMarkdownFilePath(href?: string) {
@@ -152,11 +165,13 @@ export function MarkdownLink({ href, children, onClick, ...props }: AnchorHTMLAt
 
 /** 渲染 assistant-ui 文本 part，统一支持 Markdown、GFM 表格和安全 HTML 过滤。 */
 export function MarkdownTextPart({ text, status }: TextMessagePartProps) {
+  const sanitizedText = sanitizeAssistantMarkdown(text);
+
   return (
     <div className="chat-markdown">
-      {text ? (
+      {sanitizedText ? (
         <ReactMarkdown components={{ a: MarkdownLink }} rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
-          {text}
+          {sanitizedText}
         </ReactMarkdown>
       ) : null}
       {status.type === "running" ? (

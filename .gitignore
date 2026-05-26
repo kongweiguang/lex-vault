@@ -52,5 +52,4 @@ nbdist/
 .flattened-pom.xml
 /client/lex-vault/src-tauri/binaries/**
 !/client/lex-vault/src-tauri/binaries/.gitkeep
-/client/lex-vault/.env.development.local
 /client/lex-vault/src-tauri/resources/binaries/agent-server-x86_64-pc-windows-msvc.exe

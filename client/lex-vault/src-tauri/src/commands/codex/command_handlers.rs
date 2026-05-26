@@ -18,8 +18,7 @@ use crate::commands::codex::{
     CodexPluginListResult, CodexRuntime, CodexThreadListResult, CodexThreadRecord,
     CompactThreadRequest, InterruptTurnRequest, ListThreadsRequest, PluginEnablementRequest,
     PluginLookupRequest, ReadThreadRequest, RemoveMarketplaceRequest, ResumeThreadRequest,
-    StartThreadRequest, ThreadMemoryModeRequest, UninstallPluginRequest,
-    UpgradeMarketplaceRequest,
+    StartThreadRequest, ThreadMemoryModeRequest, UninstallPluginRequest, UpgradeMarketplaceRequest,
 };
 use crate::commands::local_data::{get_app_config, AppConfig};
 use crate::event_normalizer::{ApprovalDecisionRequest, CodexUiEvent, ThreadInfo, TurnInfo};
@@ -53,17 +52,25 @@ fn emit_runtime_bundle_progress(app: &AppHandle, progress: RuntimeBundleProgress
     let _ = app.emit(RUNTIME_BUNDLE_EVENT_NAME, progress);
 }
 
-/// 仅准备 Codex runtime 依赖包，不启动 app-server，供桌面端启动阶段先行检测和下载。
+/// 仅准备 Codex runtime 与案件知识库 graphify 依赖包，不启动 app-server，供桌面端启动阶段先行检测和下载。
 #[tauri::command]
 pub async fn codex_prepare_runtime_bundle(app: AppHandle) -> Result<(), AppError> {
     let app_state = app.state::<AppState>();
     let _prepare_guard = app_state.runtime_bundle_prepare.lock().await;
-    let mut runtime_bundle_reporter = |progress: RuntimeBundleProgress| {
-        emit_runtime_bundle_progress(&app, progress);
-    };
     tokio::task::block_in_place(|| {
+        let mut primary_runtime_reporter = |progress: RuntimeBundleProgress| {
+            if progress.status != RuntimeBundleStatus::Ready {
+                emit_runtime_bundle_progress(&app, progress);
+            }
+        };
         crate::runtime_bundle::ensure_primary_runtime_bundle_with_reporter(
-            &mut runtime_bundle_reporter,
+            &mut primary_runtime_reporter,
+        )?;
+        let mut knowledge_runtime_reporter = |progress: RuntimeBundleProgress| {
+            emit_runtime_bundle_progress(&app, progress);
+        };
+        crate::knowledge_runtime::ensure_knowledge_runtime_with_reporter(
+            &mut knowledge_runtime_reporter,
         )
     })
     .map(|_| ())
@@ -471,7 +478,11 @@ pub(crate) fn build_workspace_directory_developer_instructions(
             &format!("- <workspaceRoot>/law/ 是法规资料目录，当前实际路径：{law_directory}"),
             &format!("- <workspaceRoot>/case/ 是案例资料目录，当前实际路径：{case_ref}"),
             &format!("- <workspaceRoot>/master/ 是案件存储根目录，当前实际路径：{case_master}"),
+            "当需要检索工作区内的代码、文书、法规、案例、日志、JSON、Markdown 或其他文本文件内容时，优先使用 rg 检索，不要默认逐个文件硬读。",
+            "律隐台会把随包分发的工具目录前置到运行时 PATH；如需显式定位该目录，可读取环境变量 LEX_VAULT_TOOLS_DIR，Windows 内置检索工具位于该目录下的 rg.exe。",
             "当用户提到模板、法规、案例、案件目录或相关文件时，请优先结合以上目录语义理解，不要把这些内置目录名当作无意义路径片段。",
+            "当用户要求基于案件材料梳理事实、证据、时间线、争议焦点、证明目的或材料检索时，优先使用 lex_vault_local 提供的 case_graphify_status / case_graphify_build / case_graphify_search / case_graphify_read 工具读取案件知识库索引。",
+            "如果当前案件还没有 graphify 索引，或索引已经过期，请先构建索引再回答，不要默认逐个硬读大文件；优先使用 graphify-extract 模式结果，只有在 indexMode 显示 fallback-local-text 时才把它视为保底索引。",
         ]
         .join("\n"),
     )

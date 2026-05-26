@@ -13,7 +13,6 @@ import {
   removeRuntimeStatus,
   upsertAssistantFailure,
   upsertAssistantProcessDelta,
-  upsertAssistantStatus,
   upsertAssistantToolCall,
 } from "@/features/chat/app-chat-helpers";
 import { notifyWhenWindowHidden, notifyWhenWindowInactive } from "@/services/notification-service";
@@ -37,6 +36,7 @@ type EventHandlerArgs = {
   sessionContextsRef: MutableRefObject<Record<string, SessionContext>>;
   setMessagesBySession: React.Dispatch<React.SetStateAction<MessagesBySession>>;
   setPendingApprovalsBySession?: React.Dispatch<React.SetStateAction<ApprovalsBySession>>;
+  showTransientNotice?: (sessionId: string, message: string) => void;
   setStreamingSessionId: React.Dispatch<React.SetStateAction<string | null>>;
 };
 
@@ -53,6 +53,7 @@ export function createCodexEventHandler({
   sessionContextsRef,
   setMessagesBySession,
   setPendingApprovalsBySession = () => undefined,
+  showTransientNotice = () => undefined,
   setStreamingSessionId,
 }: EventHandlerArgs) {
   /** 只把完成或失败事件归到真实进行中的 turn，避免旧 runtime 异常污染当前空白会话。 */
@@ -311,11 +312,7 @@ export function createCodexEventHandler({
     if (event.type === "warning") {
       if (isUserVisibleCodexStatus(event.message)) {
         const sessionId = selectedSessionIdRef.current;
-        const activeTurnId = activeTurnBySessionRef.current[sessionId]?.turnId;
-        setMessagesBySession((current) => ({
-          ...current,
-          [sessionId]: upsertAssistantStatus(current[sessionId] ?? [], activeTurnId, codexStatusMessage(event.message)),
-        }));
+        showTransientNotice(sessionId, codexStatusMessage(event.message));
       }
       return;
     }

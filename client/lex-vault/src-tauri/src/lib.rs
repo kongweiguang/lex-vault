@@ -9,6 +9,7 @@ mod commands;
 mod conversation_trace;
 mod event_normalizer;
 mod jsonrpc;
+mod knowledge_runtime;
 mod local_mcp_server;
 mod logging;
 mod notification_center;

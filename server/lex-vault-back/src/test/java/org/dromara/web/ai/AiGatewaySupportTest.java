@@ -107,6 +107,28 @@ class AiGatewaySupportTest {
     }
 
     @Test
+    @DisplayName("固定 chat completions 请求体应强制开启 reasoning_split")
+    void shouldRewriteFixedChatCompletionsBody() {
+        String rewritten = AiGatewaySupport.buildFixedChatCompletionsBody("""
+            {"model":"legacy","stream":false}
+            """, "MiniMax-M2.7");
+
+        assertTrue(rewritten.contains("\"model\":\"MiniMax-M2.7\""));
+        assertTrue(rewritten.contains("\"reasoning_split\":true"));
+    }
+
+    @Test
+    @DisplayName("固定 anthropic messages 请求体应强制覆盖模型")
+    void shouldRewriteFixedAnthropicMessagesBody() {
+        String rewritten = AiGatewaySupport.buildFixedAnthropicMessagesBody("""
+            {"model":"legacy","max_tokens":4096}
+            """, "MiniMax-M2.7");
+
+        assertTrue(rewritten.contains("\"model\":\"MiniMax-M2.7\""));
+        assertTrue(rewritten.contains("\"max_tokens\":4096"));
+    }
+
+    @Test
     @DisplayName("上游排序只应返回最高优先级分组节点")
     void shouldReturnOnlyHighestPriorityGroup() {
         AiPackageUpstream first = createUpstream(1L, 0, 10);

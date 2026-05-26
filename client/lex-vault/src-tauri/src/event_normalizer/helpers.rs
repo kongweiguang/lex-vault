@@ -62,8 +62,14 @@ pub(super) fn tool_info_from_params(params: &Value) -> ToolCallInfo {
     let item = params.get("item").unwrap_or(params);
     let kind = text_field(item, "type").unwrap_or_else(|| "unknown".to_string());
     let command = text_field(item, "command");
+    let tool_name = text_field(item, "toolName").or_else(|| text_field(item, "tool_name"));
     let title = if kind == "contextCompaction" {
         "压缩上下文".to_string()
+    } else if kind == "mcpToolCall" {
+        tool_name
+            .as_ref()
+            .map(|value| format!("调用工具：{value}工具"))
+            .unwrap_or_else(|| "调用工具".to_string())
     } else {
         command
             .as_ref()

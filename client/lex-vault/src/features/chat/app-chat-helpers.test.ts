@@ -435,6 +435,57 @@ describe("app-chat-helpers", () => {
     expect(summary.preview).toBe("今天武汉天气怎么样");
   });
 
+  it("restores mcp tool calls with user-facing tool names instead of raw item kinds", () => {
+    const record: CodexThreadRecord = {
+      id: "thr_mcp_history",
+      cwd: "C:\\demo",
+      ephemeral: false,
+      title: "title",
+      preview: "preview",
+      turns: [
+        {
+          turn: {
+            id: "turn_mcp_history",
+            createdAt: 1_700_000_260,
+            items: [
+              {
+                type: "response_item",
+                payload: {
+                  id: "user_1",
+                  type: "userMessage",
+                  text: "帮我记个日程",
+                },
+              },
+              {
+                type: "response_item",
+                payload: {
+                  id: "tool_mcp_1",
+                  type: "mcpToolCall",
+                  toolName: "calendar_create_event",
+                  status: "running",
+                },
+              },
+              {
+                type: "response_item",
+                payload: {
+                  id: "msg_1",
+                  type: "agentMessage",
+                  phase: "final_answer",
+                  text: "已经开始创建日程。",
+                },
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const messages = codexThreadToMessages(record);
+
+    expect(messages[1]?.processItems?.[0]?.toolCall?.name).toBe("调用工具：calendar_create_event工具");
+    expect(messages[1]?.toolCalls?.[0]?.kind).toBe("mcpToolCall");
+  });
+
   it("restores multimodal userMessage attachments from app-server content arrays", () => {
     const record: CodexThreadRecord = {
       id: "thr_multimodal",

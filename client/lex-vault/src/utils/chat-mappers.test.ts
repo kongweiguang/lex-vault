@@ -4,6 +4,7 @@ import {
   appendMessageToAttachments,
   appendMessageToInputAttachments,
   appendMessageToText,
+  latestAssistantIdAfterLatestUser,
 } from "@/utils/chat-mappers";
 
 describe("chat-mappers", () => {
@@ -81,5 +82,55 @@ describe("chat-mappers", () => {
       nodeType: undefined,
       sourceLabel: undefined,
     }]);
+  });
+
+  it("does not treat the previous assistant message as the active running reply for a new round", () => {
+    expect(latestAssistantIdAfterLatestUser([
+      {
+        id: "user-1",
+        role: "user",
+        content: "上一轮问题",
+        createdAt: "2026-05-26T10:00:00.000Z",
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "上一轮回答",
+        createdAt: "2026-05-26T10:00:05.000Z",
+      },
+      {
+        id: "user-2",
+        role: "user",
+        content: "下一轮问题",
+        createdAt: "2026-05-26T10:01:00.000Z",
+      },
+    ] as never[])).toBeUndefined();
+
+    expect(latestAssistantIdAfterLatestUser([
+      {
+        id: "user-1",
+        role: "user",
+        content: "上一轮问题",
+        createdAt: "2026-05-26T10:00:00.000Z",
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "上一轮回答",
+        createdAt: "2026-05-26T10:00:05.000Z",
+      },
+      {
+        id: "user-2",
+        role: "user",
+        content: "下一轮问题",
+        createdAt: "2026-05-26T10:01:00.000Z",
+      },
+      {
+        id: "assistant-2",
+        role: "assistant",
+        content: "",
+        createdAt: "2026-05-26T10:01:02.000Z",
+      },
+    ] as never[])).toBe("assistant-2");
   });
 });

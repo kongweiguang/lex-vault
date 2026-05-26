@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AssistantRuntimeProvider, type AppendMessage, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
-import { Bot, Archive, LoaderCircle, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Bot, Archive, Info, LoaderCircle, PanelRightClose, PanelRightOpen } from "lucide-react";
 
 import type { FilePreviewTarget } from "@/components/files/FilePreviewPanel";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import {
   appendMessageToText,
   appendMessageToVisibleText,
   chatMessageToThreadMessage,
+  latestAssistantIdAfterLatestUser,
 } from "@/utils/chat-mappers";
 
 export function ChatPanel({
@@ -33,6 +34,7 @@ export function ChatPanel({
   contextAttachments = [],
   isPreviewCollapsed,
   sessionId,
+  transientNotice,
   title,
   messages,
   isStreaming,
@@ -62,6 +64,7 @@ export function ChatPanel({
   /** 当前聊天面板属于普通对话还是案件对话。 */
   mode?: ChatPanelMode;
   sessionId: string;
+  transientNotice?: { id: string; message: string } | null;
   title: string;
   messages: ChatMessage[];
   isStreaming: boolean;
@@ -119,12 +122,27 @@ export function ChatPanel({
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState(false);
-  const latestAssistantId = [...messages].reverse().find((message) => message.role === "assistant")?.id;
+  const [visibleTransientNotice, setVisibleTransientNotice] = useState(transientNotice);
+  const latestAssistantId = latestAssistantIdAfterLatestUser(messages);
   const scrollShortcutRefreshKey = `${messages.length}-${isStreaming}-${latestAssistantId ?? "none"}`;
   const loadingHistoryTitle = messages.length ? "正在刷新历史记录" : "正在加载历史记录";
   const loadingHistoryDescription = messages.length
     ? "正在读取完整过程链路和最终结果，请稍等一下。"
     : "正在回填这条会话的完整内容，请稍等一下。";
+
+  useEffect(() => {
+    setVisibleTransientNotice(transientNotice);
+  }, [transientNotice]);
+
+  useEffect(() => {
+    if (!visibleTransientNotice) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      setVisibleTransientNotice((current) => (current?.id === visibleTransientNotice.id ? null : current));
+    }, 3600);
+    return () => window.clearTimeout(timer);
+  }, [visibleTransientNotice]);
 
   const convertMessage = useCallback(
     (message: ChatMessage, index: number) =>
@@ -222,6 +240,14 @@ export function ChatPanel({
             </header>
 
             <div className="relative min-h-0 flex-1">
+              {visibleTransientNotice ? (
+                <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center px-4 pt-4">
+                  <div className="flex max-w-2xl items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50/96 px-4 py-3 text-sm text-amber-900 shadow-lg shadow-amber-100/80 backdrop-blur-sm">
+                    <Info className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    <p className="leading-6">{visibleTransientNotice.message}</p>
+                  </div>
+                </div>
+              ) : null}
               {isHydratingHistory ? (
                 <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-50/72 px-6 py-10 backdrop-blur-[2px]">
                   <div className="flex w-full max-w-sm animate-in fade-in zoom-in-95 duration-200 flex-col items-center rounded-2xl border border-slate-200 bg-white/96 px-6 py-8 text-center shadow-lg shadow-slate-200/70">

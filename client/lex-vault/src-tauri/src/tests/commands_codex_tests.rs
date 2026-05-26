@@ -42,6 +42,8 @@ fn workspace_directory_developer_instructions_use_app_config_paths() {
     assert!(instructions.contains("D:\\legal\\templates"));
     assert!(instructions.contains("<workspaceRoot>/master/ 是案件存储根目录"));
     assert!(instructions.contains("D:\\legal\\matters"));
+    assert!(instructions.contains("优先使用 rg 检索"));
+    assert!(instructions.contains("LEX_VAULT_TOOLS_DIR"));
 }
 
 /// 验证已有 instructions 会与工作区目录说明合并。
@@ -1022,6 +1024,33 @@ fn tauri_bundle_resources_include_builtin_binaries_directory() {
     assert!(
         has_builtin_binaries,
         "tauri bundle resources should include resources/binaries so installers can ship bundled app-server sidecars"
+    );
+}
+
+/// 验证安装包配置会把内置 tools 目录一起打进客户端，避免客户机缺失 rg 等本地检索工具。
+#[test]
+fn tauri_bundle_resources_include_tools_directory() {
+    let tauri_config_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+    let raw = std::fs::read_to_string(&tauri_config_path).expect("tauri config should be readable");
+    let config: Value = serde_json::from_str(&raw).expect("tauri config should be valid json");
+    let resources = config
+        .get("bundle")
+        .and_then(|bundle| bundle.get("resources"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let has_tools_resources = resources.iter().any(|resource| {
+        resource
+            .as_str()
+            .map(|value| value == "resources/tools")
+            .unwrap_or(false)
+    });
+
+    assert!(
+        has_tools_resources,
+        "tauri bundle resources should include resources/tools so installers can ship bundled search tools such as rg.exe"
     );
 }
 

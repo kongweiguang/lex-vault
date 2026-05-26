@@ -12,6 +12,7 @@ function createStateHarness() {
   let messagesBySession: MessagesBySession = {};
   let pendingApprovalsBySession: ApprovalsBySession = {};
   let streamingSessionId: string | null = null;
+  const showTransientNotice = vi.fn();
   const activeTurnBySessionRef = {
     current: {} as Record<string, { threadId: string; turnId: string }>,
   };
@@ -50,6 +51,7 @@ function createStateHarness() {
     setMessagesBySession,
     setPendingApprovalsBySession,
     setStreamingSessionId,
+    showTransientNotice,
     getPendingApprovalsBySession: () => pendingApprovalsBySession,
     getStreamingSessionId: () => streamingSessionId,
   };
@@ -70,6 +72,7 @@ describe("codex-event-handler", () => {
       selectedSessionIdRef: state.selectedSessionIdRef,
       sessionContextsRef: state.sessionContextsRef,
       setMessagesBySession: state.setMessagesBySession,
+      showTransientNotice: state.showTransientNotice,
       setStreamingSessionId: state.setStreamingSessionId,
     });
 
@@ -80,6 +83,35 @@ describe("codex-event-handler", () => {
     });
 
     expect(loadChatHistoryList).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows reconnect warnings as transient notices instead of chat messages", () => {
+    const state = createStateHarness();
+    const handler = createCodexEventHandler({
+      activeTurnBySessionRef: state.activeTurnBySessionRef,
+      getMessagesBySession: state.getMessagesBySession,
+      interruptedTurnIdsRef: state.interruptedTurnIdsRef,
+      loadCaseChatHistoryList: vi.fn(async () => {}),
+      loadChatHistoryList: vi.fn(async () => {}),
+      omitRunningThread: vi.fn(),
+      resolveEventSessionId: vi.fn(),
+      selectedSessionIdRef: state.selectedSessionIdRef,
+      sessionContextsRef: state.sessionContextsRef,
+      setMessagesBySession: state.setMessagesBySession,
+      showTransientNotice: state.showTransientNotice,
+      setStreamingSessionId: state.setStreamingSessionId,
+    });
+
+    handler({
+      type: "warning",
+      message: "Codex 正在重连模型通道，请稍候",
+    });
+
+    expect(state.showTransientNotice).toHaveBeenCalledWith(
+      "session-selected",
+      "模型连接不稳定，小隐正在自动重连，请稍等。",
+    );
+    expect(state.getMessagesBySession()).toEqual({});
   });
 
   it("does not inject a failure bubble when runtime fails before any turn starts", () => {

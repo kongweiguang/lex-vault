@@ -26,6 +26,8 @@ const LEX_VAULT_PYTHON_ENV: &str = "LEX_VAULT_PYTHON";
 const LEX_VAULT_NODE_ENV: &str = "LEX_VAULT_NODE";
 /// app-server 与插件脚本读取 Lex Vault 内置 runtime 根目录的环境变量名。
 const LEX_VAULT_RUNTIME_ROOT_ENV: &str = "LEX_VAULT_RUNTIME_ROOT";
+/// app-server 与模型工具调用读取 Lex Vault 内置工具目录的环境变量名。
+const LEX_VAULT_TOOLS_DIR_ENV: &str = "LEX_VAULT_TOOLS_DIR";
 /// 当前工作空间根目录，供本地插件定位业务目录。
 const LEX_VAULT_WORKSPACE_ROOT_ENV: &str = "LEX_VAULT_WORKSPACE_ROOT";
 /// 当前工作空间级 SQLite 数据库路径，供本地插件直接访问。
@@ -34,6 +36,8 @@ const LEX_VAULT_WORKSPACE_DATABASE_ENV: &str = "LEX_VAULT_WORKSPACE_DATABASE";
 const NODE_REPL_NODE_MODULE_DIRS_ENV: &str = "NODE_REPL_NODE_MODULE_DIRS";
 /// Lex Vault 安装包内置 app-server sidecar 资源目录名。
 const BUILTIN_BINARIES_DIRECTORY: &str = "binaries";
+/// Lex Vault 安装包内置工具资源目录名。
+const BUILTIN_TOOLS_DIRECTORY: &str = "tools";
 
 /// Windows 子进程创建时不显示控制台窗口。
 #[cfg(windows)]
@@ -69,6 +73,8 @@ struct BuiltinRuntimeConfig {
     node_executable: String,
     /// Lex Vault 内置 runtime 根目录绝对路径。
     runtime_root: String,
+    /// Lex Vault 内置工具目录绝对路径。
+    tools_directory: Option<String>,
     /// 需要暴露给 Node REPL 的 node_modules 搜索根目录。
     node_module_directories: Vec<String>,
     /// 需要前置到 app-server 子进程 PATH 的目录列表。
@@ -281,6 +287,10 @@ fn discover_builtin_runtime_config(
     #[cfg(windows)]
     push_existing_path_entry(&mut path_entries, python_root.join("DLLs"));
     push_existing_path_entry(&mut path_entries, node_root.clone());
+    let tools_directory = locate_builtin_tools_directory();
+    if let Some(tools_directory) = tools_directory.clone() {
+        push_existing_path_entry(&mut path_entries, tools_directory);
+    }
 
     let mut node_module_directories = Vec::new();
     let node_modules = runtime_root
@@ -295,6 +305,7 @@ fn discover_builtin_runtime_config(
         python_executable: python_path,
         node_executable: node_path,
         runtime_root: runtime_root.display().to_string(),
+        tools_directory: tools_directory.map(|path| path.display().to_string()),
         node_module_directories,
         path_entries,
     }))
@@ -315,6 +326,9 @@ fn build_runtime_environment(runtime: &BuiltinRuntimeConfig) -> Vec<(String, Str
         LEX_VAULT_RUNTIME_ROOT_ENV.to_string(),
         runtime.runtime_root.clone(),
     ));
+    if let Some(tools_directory) = runtime.tools_directory.as_ref() {
+        environment.push((LEX_VAULT_TOOLS_DIR_ENV.to_string(), tools_directory.clone()));
+    }
     if !runtime.node_module_directories.is_empty() {
         environment.push((
             NODE_REPL_NODE_MODULE_DIRS_ENV.to_string(),
@@ -386,6 +400,32 @@ fn locate_builtin_runtime_root(
         }
     }
     ensure_primary_runtime_bundle_with_reporter(runtime_bundle_reporter).map(Some)
+}
+
+/// 在开发目录和打包资源目录中查找 Lex Vault 内置工具目录。
+fn locate_builtin_tools_directory() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(current_dir) = std::env::current_dir() {
+        candidates.push(
+            current_dir
+                .join("src-tauri")
+                .join("resources")
+                .join(BUILTIN_TOOLS_DIRECTORY),
+        );
+        candidates.push(current_dir.join("resources").join(BUILTIN_TOOLS_DIRECTORY));
+        candidates.push(current_dir.join(BUILTIN_TOOLS_DIRECTORY));
+    }
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(parent) = current_exe.parent() {
+            candidates.push(parent.join("resources").join(BUILTIN_TOOLS_DIRECTORY));
+            candidates.push(parent.join(BUILTIN_TOOLS_DIRECTORY));
+        }
+    }
+
+    candidates
+        .into_iter()
+        .find(|path| path.is_dir())
+        .map(|path| std::fs::canonicalize(&path).unwrap_or(path))
 }
 
 /// 解析 runtime bundle 中的指定可执行文件。

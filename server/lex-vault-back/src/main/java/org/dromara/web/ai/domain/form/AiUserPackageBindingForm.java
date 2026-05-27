@@ -1,12 +1,15 @@
 package org.dromara.web.ai.domain.form;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 
 /**
  * AI 用户套餐绑定表单。
  *
  * @author kongweiguang
  */
+@Data
 public class AiUserPackageBindingForm {
 
     /**
@@ -24,11 +27,13 @@ public class AiUserPackageBindingForm {
     /**
      * 生效开始时间，ISO 本地时间字符串。
      */
+    @NotBlank(message = "生效开始时间不能为空")
     private String effectiveFrom;
 
     /**
      * 生效结束时间，ISO 本地时间字符串。
      */
+    @NotBlank(message = "生效结束时间不能为空")
     private String effectiveTo;
 
     /**
@@ -36,43 +41,4 @@ public class AiUserPackageBindingForm {
      */
     private String remark;
 
-    public Long getUserId() {
-        return userId;
-    }
-
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
-
-    public Long getPackageId() {
-        return packageId;
-    }
-
-    public void setPackageId(Long packageId) {
-        this.packageId = packageId;
-    }
-
-    public String getEffectiveFrom() {
-        return effectiveFrom;
-    }
-
-    public void setEffectiveFrom(String effectiveFrom) {
-        this.effectiveFrom = effectiveFrom;
-    }
-
-    public String getEffectiveTo() {
-        return effectiveTo;
-    }
-
-    public void setEffectiveTo(String effectiveTo) {
-        this.effectiveTo = effectiveTo;
-    }
-
-    public String getRemark() {
-        return remark;
-    }
-
-    public void setRemark(String remark) {
-        this.remark = remark;
-    }
 }

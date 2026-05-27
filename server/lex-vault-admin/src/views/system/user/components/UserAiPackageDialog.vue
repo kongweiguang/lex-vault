@@ -3,9 +3,8 @@
     <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
       <el-alert v-if="currentBinding?.packageName" type="info" :closable="false" class="mb-[12px]">
         <template #title>
-          当前绑定：{{ currentBinding.packageName }}（{{ currentBinding.packageCode }}）
+          当前绑定：{{ formatCurrentBindingPackage(currentBinding) }}
           <span v-if="currentBinding.effectiveFrom">，生效：{{ currentBinding.effectiveFrom }}</span>
-          <span v-if="currentBinding.effectiveTo"> 至 {{ currentBinding.effectiveTo }}</span>
         </template>
       </el-alert>
 
@@ -15,10 +14,10 @@
         </el-select>
       </el-form-item>
       <el-form-item label="开始时间" prop="effectiveFrom">
-        <el-date-picker v-model="form.effectiveFrom" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="不填默认立即生效" style="width: 100%" />
+        <el-date-picker v-model="form.effectiveFrom" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="请选择开始时间" style="width: 100%" />
       </el-form-item>
       <el-form-item label="结束时间" prop="effectiveTo">
-        <el-date-picker v-model="form.effectiveTo" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="不填表示长期有效" style="width: 100%" />
+        <el-date-picker v-model="form.effectiveTo" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="请选择结束时间" style="width: 100%" />
       </el-form-item>
       <el-form-item label="备注" prop="remark">
         <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
@@ -65,7 +64,9 @@ const initFormData: AiUserPackageBindingForm = {
 const form = ref<AiUserPackageBindingForm>({ ...initFormData });
 const formRef = ref<ElFormInstance>();
 const rules = reactive<FormRules>({
-  packageId: [{ required: true, message: '请选择套餐', trigger: 'change' }]
+  packageId: [{ required: true, message: '请选择套餐', trigger: 'change' }],
+  effectiveFrom: [{ required: true, message: '请选择开始时间', trigger: 'change' }],
+  effectiveTo: [{ required: true, message: '请选择结束时间', trigger: 'change' }]
 });
 
 const loadPackageOptions = async () => {
@@ -81,9 +82,29 @@ const loadCurrentBinding = async () => {
 
 const open = async (user: UserVO) => {
   currentUser.value = user;
-  form.value = { ...initFormData, userId: user.userId };
+  form.value = { ...initFormData, userId: user.userId, ...createDefaultEffectiveRange() };
   visible.value = true;
   await Promise.all([loadPackageOptions(), loadCurrentBinding()]);
+};
+
+const createDefaultEffectiveRange = () => {
+  const start = new Date();
+  const end = new Date(start);
+  end.setDate(end.getDate() + 30);
+  return {
+    effectiveFrom: formatDateTimeInput(start),
+    effectiveTo: formatDateTimeInput(end)
+  };
+};
+
+const formatDateTimeInput = (value: Date) => {
+  const pad = (num: number) => String(num).padStart(2, '0');
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
+};
+
+const formatCurrentBindingPackage = (binding: AiUserPackageBindingVO) => {
+  const label = `${binding.packageName || ''}（${binding.packageCode || ''}）`;
+  return binding.effectiveTo ? `${label}（到期：${binding.effectiveTo}）` : label;
 };
 
 const submitForm = () => {

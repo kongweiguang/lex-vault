@@ -5,6 +5,7 @@ import {
   appendMessageToInputAttachments,
   appendMessageToText,
   latestAssistantIdAfterLatestUser,
+  withStreamingAssistantPlaceholder,
 } from "@/utils/chat-mappers";
 
 describe("chat-mappers", () => {
@@ -132,5 +133,43 @@ describe("chat-mappers", () => {
         createdAt: "2026-05-26T10:01:02.000Z",
       },
     ] as never[])).toBe("assistant-2");
+  });
+
+  it("adds a temporary assistant placeholder while a new round is streaming without any returned assistant event", () => {
+    const messages = withStreamingAssistantPlaceholder([
+      {
+        id: "user-1",
+        role: "user",
+        content: "12点提醒我吃饭",
+        createdAt: "2026-05-27T03:09:00.000Z",
+      },
+    ] as never[], true);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({
+      id: "assistant-pending-user-1",
+      role: "assistant",
+      content: "",
+    });
+  });
+
+  it("does not add a second placeholder once the current round already has an assistant message", () => {
+    const messages = withStreamingAssistantPlaceholder([
+      {
+        id: "user-1",
+        role: "user",
+        content: "12点提醒我吃饭",
+        createdAt: "2026-05-27T03:09:00.000Z",
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "",
+        createdAt: "2026-05-27T03:09:01.000Z",
+      },
+    ] as never[], true);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]?.id).toBe("assistant-1");
   });
 });

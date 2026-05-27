@@ -1577,7 +1577,7 @@ function findAssistantMessageIndex(messages: ChatMessage[], turnId: string | und
   if (turnId) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
-      if (message.role === "assistant" && message.turnId === turnId) {
+      if ((message.role === "assistant" || message.role === "error") && message.turnId === turnId) {
         return index;
       }
     }
@@ -1592,7 +1592,7 @@ function findAssistantMessageIndex(messages: ChatMessage[], turnId: string | und
     }
   }
   for (let index = messages.length - 1; index > lastUserIndex; index -= 1) {
-    if (messages[index].role === "assistant" && !messages[index].turnId) {
+    if ((messages[index].role === "assistant" || messages[index].role === "error") && !messages[index].turnId) {
       return index;
     }
   }
@@ -1609,7 +1609,7 @@ function findLatestAssistantMessageIndex(messages: ChatMessage[]) {
     }
   }
   for (let index = messages.length - 1; index > lastUserIndex; index -= 1) {
-    if (messages[index].role === "assistant") {
+    if (messages[index].role === "assistant" || messages[index].role === "error") {
       return index;
     }
   }

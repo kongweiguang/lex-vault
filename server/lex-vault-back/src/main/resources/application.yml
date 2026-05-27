@@ -240,6 +240,36 @@ sse:
   enabled: true
   path: /resource/sse
 
+--- # AI 网关配置
+ai:
+  gateway:
+    # OpenAI 兼容限流响应状态码与错误类型
+    rate-limit-status: 429
+    rate-limit-type: rate_limit_exceeded
+    # 只透传这些响应头，避免把上游内部网关头暴露给调用方
+    response-headers:
+      - Content-Type
+      - Cache-Control
+      - Pragma
+      - Expires
+    # 长文本索引和流式响应可能耗时较长，单位：秒
+    timeout:
+      connect-seconds: 30
+      write-seconds: 300
+      read-seconds: 300
+      call-seconds: 300
+    # Chat Completions 兼容入口固定上游
+    chat-completions:
+      base-url: https://api.minimaxi.com/v1/chat/completions
+      default-model: MiniMax-M2.7
+      api-key: sk-cp-ot6hMt65zIx8rHYFzcmGxEYERsMXJ3Nj6OOqH2r3Plp9KsuTwu8zY30cL024Oud8Ge5iAQfEX8dngBxdbmiasy8DWPNl6axRjGqr1unJPwkq6pibDYBAXAc
+    # Anthropic Messages 兼容入口固定上游；graphify 会复用该入口
+    anthropic-messages:
+      base-url: https://api.minimaxi.com/anthropic/v1/messages
+      default-model: MiniMax-M2.7
+      api-key: sk-cp-ot6hMt65zIx8rHYFzcmGxEYERsMXJ3Nj6OOqH2r3Plp9KsuTwu8zY30cL024Oud8Ge5iAQfEX8dngBxdbmiasy8DWPNl6axRjGqr1unJPwkq6pibDYBAXAc
+      version: 2023-06-01
+
 --- # websocket
 websocket:
   # 如果关闭 需要和前端开关一起关闭

@@ -1,6 +1,6 @@
 [package]
 name = "lex-vault"
-version = "0.1.7"
+version = "0.1.11"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -60,6 +60,10 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+
+
+
 
 
 

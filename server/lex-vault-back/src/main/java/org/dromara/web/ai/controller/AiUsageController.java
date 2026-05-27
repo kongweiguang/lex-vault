@@ -7,6 +7,7 @@ import org.dromara.web.ai.domain.AiPageResult;
 import org.dromara.web.ai.domain.query.AiUsageQuery;
 import org.dromara.web.ai.domain.vo.AiUsageRecordVo;
 import org.dromara.web.ai.domain.vo.AiUsageSummaryVo;
+import org.dromara.web.ai.domain.vo.AiUsageTotalVo;
 import org.dromara.web.ai.service.IAiAdminService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,6 +38,18 @@ public class AiUsageController {
     @GetMapping("/list")
     public AiPageResult<AiUsageRecordVo> list(AiUsageQuery query) {
         return aiAdminService.listUsageRecords(query);
+    }
+
+    /**
+     * 按查询条件汇总用量总计。
+     *
+     * @param query 查询条件
+     * @return 汇总结果
+     */
+    @SaCheckPermission("system:aiUsage:query")
+    @GetMapping("/totals")
+    public R<AiUsageTotalVo> totals(AiUsageQuery query) {
+        return R.ok(aiAdminService.getUsageTotals(query));
     }
 
     /**

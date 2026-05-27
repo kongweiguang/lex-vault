@@ -1,16 +1,19 @@
 package org.dromara.web.ai.domain.vo;
 
+import lombok.Data;
+
 /**
  * AI 配额检查结果。
  *
  * @author kongweiguang
  */
+@Data
 public class QuotaCheckResult {
 
     /**
      * 是否允许继续请求。
      */
-    private boolean allowed;
+    private Boolean allowed;
 
     /**
      * OpenAI 风格错误码。
@@ -22,27 +25,4 @@ public class QuotaCheckResult {
      */
     private String message;
 
-    public boolean isAllowed() {
-        return allowed;
-    }
-
-    public void setAllowed(boolean allowed) {
-        this.allowed = allowed;
-    }
-
-    public String getErrorCode() {
-        return errorCode;
-    }
-
-    public void setErrorCode(String errorCode) {
-        this.errorCode = errorCode;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
-    }
 }

@@ -131,10 +131,22 @@
                   <el-button v-hasPermi="['system:user:edit']" link type="primary" icon="CircleCheck" @click="handleAuthRole(scope.row)"></el-button>
                 </el-tooltip>
                 <el-tooltip v-if="scope.row.userId !== 1" content="绑定AI套餐" placement="top">
-                  <el-button v-hasPermi="['system:aiUserPackage:edit']" link type="primary" icon="Connection" @click="handleAiPackageBind(scope.row)"></el-button>
+                  <el-button
+                    v-hasPermi="['system:aiUserPackage:edit']"
+                    link
+                    type="primary"
+                    icon="Connection"
+                    @click="handleAiPackageBind(scope.row)"
+                  ></el-button>
                 </el-tooltip>
                 <el-tooltip v-if="scope.row.userId !== 1" content="查看AI用量" placement="top">
-                  <el-button v-hasPermi="['system:aiUsage:query']" link type="primary" icon="Histogram" @click="handleAiUsageView(scope.row)"></el-button>
+                  <el-button
+                    v-hasPermi="['system:aiUsage:query']"
+                    link
+                    type="primary"
+                    icon="Histogram"
+                    @click="handleAiUsageView(scope.row)"
+                  ></el-button>
                 </el-tooltip>
               </template>
             </el-table-column>
@@ -293,6 +305,7 @@
     </el-dialog>
 
     <UserAiPackageDialog ref="userAiPackageDialogRef" @success="getList" />
+    <UserAiUsageDialog ref="userAiUsageDialogRef" />
   </div>
 </template>
 
@@ -308,6 +321,7 @@ import { optionselect } from '@/api/system/post';
 import { checkPermi } from '@/utils/permission';
 import { useUserStore } from '@/store/modules/user';
 import UserAiPackageDialog from './components/UserAiPackageDialog.vue';
+import UserAiUsageDialog from './components/UserAiUsageDialog.vue';
 
 const router = useRouter();
 const { proxy } = getCurrentInstance() as ComponentInternalInstance;
@@ -358,6 +372,7 @@ const userFormRef = ref<ElFormInstance>();
 const uploadRef = ref<ElUploadInstance>();
 const formDialogRef = ref<ElDialogInstance>();
 const userAiPackageDialogRef = ref<InstanceType<typeof UserAiPackageDialog>>();
+const userAiUsageDialogRef = ref<InstanceType<typeof UserAiUsageDialog>>();
 
 const dialog = reactive<DialogOption>({
   visible: false,
@@ -532,13 +547,7 @@ const handleAiPackageBind = (row: UserVO) => {
 
 /** 查看指定用户的 AI 用量 */
 const handleAiUsageView = (row: UserVO) => {
-  router.push({
-    path: '/system/aiUsage',
-    query: {
-      userId: row.userId,
-      userName: row.userName
-    }
-  });
+  userAiUsageDialogRef.value?.open(row);
 };
 
 /** 重置密码按钮操作 */
@@ -641,9 +650,7 @@ const handleUpdate = async (row?: UserForm) => {
   dialog.title = '修改用户';
   Object.assign(form.value, data.user);
   postOptions.value = data.posts;
-  roleOptions.value = Array.from(
-    new Map([...data.roles, ...data.user.roles].map(role => [role.roleId, role])).values()
-  );
+  roleOptions.value = Array.from(new Map([...data.roles, ...data.user.roles].map((role) => [role.roleId, role])).values());
   form.value.postIds = data.postIds;
   form.value.roleIds = data.roleIds;
   form.value.password = '';

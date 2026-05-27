@@ -136,6 +136,28 @@ export function latestAssistantIdAfterLatestUser(messages: ChatMessage[]) {
   return undefined;
 }
 
+/** 发送已开始但首条 assistant 事件尚未返回时，补一个临时空消息占位，避免线程区完全空白。 */
+export function withStreamingAssistantPlaceholder(messages: ChatMessage[], isStreaming: boolean) {
+  if (!isStreaming || latestAssistantIdAfterLatestUser(messages)) {
+    return messages;
+  }
+
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || lastMessage.role !== "user") {
+    return messages;
+  }
+
+  return [
+    ...messages,
+    {
+      id: `assistant-pending-${lastMessage.id}`,
+      role: "assistant" as const,
+      content: "",
+      createdAt: new Date().toISOString(),
+    },
+  ];
+}
+
 /** 将 assistant-ui 的结构化发送消息还原为后端需要的纯文本 message。 */
 export function appendMessageToText(message: AppendMessage) {
   return message.content

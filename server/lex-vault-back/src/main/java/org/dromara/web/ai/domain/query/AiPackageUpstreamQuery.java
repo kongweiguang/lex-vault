@@ -1,10 +1,15 @@
 package org.dromara.web.ai.domain.query;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
 /**
  * AI 套餐上游节点查询对象。
  *
  * @author kongweiguang
  */
+@Data
+@EqualsAndHashCode(callSuper = true)
 public class AiPackageUpstreamQuery extends AiBasePageQuery {
 
     /**
@@ -22,27 +27,4 @@ public class AiPackageUpstreamQuery extends AiBasePageQuery {
      */
     private String status;
 
-    public Long getPackageId() {
-        return packageId;
-    }
-
-    public void setPackageId(Long packageId) {
-        this.packageId = packageId;
-    }
-
-    public String getUpstreamName() {
-        return upstreamName;
-    }
-
-    public void setUpstreamName(String upstreamName) {
-        this.upstreamName = upstreamName;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
 }

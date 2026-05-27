@@ -1,10 +1,15 @@
 package org.dromara.web.ai.domain.query;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
 /**
  * AI 用量流水分页查询对象。
  *
  * @author kongweiguang
  */
+@Data
+@EqualsAndHashCode(callSuper = true)
 public class AiUsageQuery extends AiBasePageQuery {
 
     /**
@@ -37,51 +42,4 @@ public class AiUsageQuery extends AiBasePageQuery {
      */
     private String occurredTo;
 
-    public Long getUserId() {
-        return userId;
-    }
-
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
-
-    public String getUserName() {
-        return userName;
-    }
-
-    public void setUserName(String userName) {
-        this.userName = userName;
-    }
-
-    public Long getPackageId() {
-        return packageId;
-    }
-
-    public void setPackageId(Long packageId) {
-        this.packageId = packageId;
-    }
-
-    public String getRequestStatus() {
-        return requestStatus;
-    }
-
-    public void setRequestStatus(String requestStatus) {
-        this.requestStatus = requestStatus;
-    }
-
-    public String getOccurredFrom() {
-        return occurredFrom;
-    }
-
-    public void setOccurredFrom(String occurredFrom) {
-        this.occurredFrom = occurredFrom;
-    }
-
-    public String getOccurredTo() {
-        return occurredTo;
-    }
-
-    public void setOccurredTo(String occurredTo) {
-        this.occurredTo = occurredTo;
-    }
 }

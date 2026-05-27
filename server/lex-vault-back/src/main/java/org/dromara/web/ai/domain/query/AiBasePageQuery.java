@@ -1,35 +1,23 @@
 package org.dromara.web.ai.domain.query;
 
+import lombok.Data;
+
 /**
  * AI 管理端基础分页查询对象。
  *
  * @author kongweiguang
  */
+@Data
 public class AiBasePageQuery {
 
     /**
      * 当前页码。
      */
-    private long pageNum = 1;
+    private Long pageNum = 1L;
 
     /**
      * 每页条数。
      */
-    private long pageSize = 10;
+    private Long pageSize = 10L;
 
-    public long getPageNum() {
-        return pageNum;
-    }
-
-    public void setPageNum(long pageNum) {
-        this.pageNum = pageNum;
-    }
-
-    public long getPageSize() {
-        return pageSize;
-    }
-
-    public void setPageSize(long pageSize) {
-        this.pageSize = pageSize;
-    }
 }

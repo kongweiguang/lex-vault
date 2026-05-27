@@ -1,6 +1,7 @@
 package org.dromara.web.ai.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ import org.dromara.web.ai.domain.vo.AiPackageOptionVo;
 import org.dromara.web.ai.domain.vo.AiUsageRecordVo;
 import org.dromara.web.ai.domain.vo.AiUsageSnapshot;
 import org.dromara.web.ai.domain.vo.AiUsageSummaryVo;
+import org.dromara.web.ai.domain.vo.AiUsageTotalVo;
 import org.dromara.web.ai.domain.vo.AiUserPackageBindingVo;
 import org.dromara.web.ai.mapper.AiPackageMapper;
 import org.dromara.web.ai.mapper.AiPackageUpstreamMapper;
@@ -34,11 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.function.Function;
 import java.util.*;
@@ -64,11 +64,6 @@ public class AiAdminServiceImpl implements IAiAdminService {
     private static final String STATUS_DISABLED = "1";
 
     /**
-     * UTC 时区。
-     */
-    private static final ZoneOffset UTC_ZONE = ZoneOffset.UTC;
-
-    /**
      * 时间格式化器。
      */
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -78,11 +73,22 @@ public class AiAdminServiceImpl implements IAiAdminService {
      */
     private static final Set<String> ALLOWED_PACKAGE_CODES = Set.of("plus", "pro", "max");
 
+    /**
+     * 5 小时套餐额度周期。
+     */
+    private static final Duration FIVE_HOUR_PACKAGE_CYCLE = Duration.ofHours(5);
+
+    /**
+     * 7 天套餐额度周期。
+     */
+    private static final Duration WEEKLY_PACKAGE_CYCLE = Duration.ofDays(7);
+
     private final AiPackageMapper packageMapper;
     private final AiPackageUpstreamMapper upstreamMapper;
     private final AiUserPackageBindingMapper bindingMapper;
     private final AiUsageRecordMapper usageRecordMapper;
     private final SysUserMapper userMapper;
+    private final Clock aiBusinessClock;
 
     @Override
     public AiPageResult<AiPackage> listPackages(AiPackageQuery query) {
@@ -114,17 +120,15 @@ public class AiAdminServiceImpl implements IAiAdminService {
         String packageCode = normalizeCode(form.getPackageCode());
         validatePackageCode(packageCode);
         validateTokenLimit(form.getFiveHourTokenLimit(), "5 小时限额");
-        validateTokenLimit(form.getWeeklyTokenLimit(), "周限额");
-        validateTokenLimit(form.getMonthlyTokenLimit(), "月限额");
+        validateTokenLimit(form.getWeeklyTokenLimit(), "7 天限额");
         ensurePackageCodeUnique(packageCode, form.getId());
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = now();
         AiPackage entity = form.getId() == null ? new AiPackage() : getPackage(form.getId());
         entity.setPackageCode(packageCode);
         entity.setPackageName(form.getPackageName());
         entity.setFiveHourTokenLimit(form.getFiveHourTokenLimit());
         entity.setWeeklyTokenLimit(form.getWeeklyTokenLimit());
-        entity.setMonthlyTokenLimit(form.getMonthlyTokenLimit());
         entity.setRemark(form.getRemark());
         entity.setUpdateTime(now);
         if (entity.getId() == null) {
@@ -140,7 +144,7 @@ public class AiAdminServiceImpl implements IAiAdminService {
     public void changePackageStatus(Long id, String status) {
         AiPackage entity = getPackage(id);
         entity.setStatus(status);
-        entity.setUpdateTime(LocalDateTime.now());
+        entity.setUpdateTime(now());
         packageMapper.updateById(entity);
     }
 
@@ -207,14 +211,14 @@ public class AiAdminServiceImpl implements IAiAdminService {
         if (form.getPriority() == null || form.getPriority() < 0) {
             throw new ServiceException("优先级不能小于 0");
         }
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = now();
         AiPackageUpstream entity = form.getId() == null ? new AiPackageUpstream() : getUpstream(form.getId());
         entity.setPackageId(form.getPackageId());
         entity.setUpstreamName(form.getUpstreamName());
         entity.setBaseUrl(form.getBaseUrl());
         entity.setApiKey(form.getApiKey());
         entity.setModel(form.getModel());
-        entity.setReasoningJson(form.getReasoningJson());
+        entity.setExtraParamsJson(form.getExtraParamsJson());
         entity.setWeight(form.getWeight());
         entity.setPriority(form.getPriority());
         entity.setRemark(form.getRemark());
@@ -232,7 +236,7 @@ public class AiAdminServiceImpl implements IAiAdminService {
     public void changeUpstreamStatus(Long id, String status) {
         AiPackageUpstream upstream = getUpstream(id);
         upstream.setStatus(status);
-        upstream.setUpdateTime(LocalDateTime.now());
+        upstream.setUpdateTime(now());
         upstreamMapper.updateById(upstream);
     }
 
@@ -243,11 +247,14 @@ public class AiAdminServiceImpl implements IAiAdminService {
 
     @Override
     public AiUserPackageBindingVo getCurrentBinding(Long userId) {
-        AiUserPackageBinding entity = getCurrentBindingEntity(userId, LocalDateTime.now(UTC_ZONE));
+        AiUserPackageBinding entity = getCurrentBindingEntity(userId, now());
         if (entity == null) {
             return null;
         }
         AiPackage aiPackage = packageMapper.selectById(entity.getPackageId());
+        if (!isPackageUsable(aiPackage)) {
+            return null;
+        }
         AiUserPackageBindingVo vo = new AiUserPackageBindingVo();
         vo.setId(entity.getId());
         vo.setUserId(entity.getUserId());
@@ -268,18 +275,18 @@ public class AiAdminServiceImpl implements IAiAdminService {
         if (!STATUS_ENABLED.equals(aiPackage.getStatus())) {
             throw new ServiceException("目标套餐已停用，不能绑定");
         }
-        LocalDateTime nowUtc = LocalDateTime.now(UTC_ZONE);
-        LocalDateTime effectiveFrom = parseDateTimeOrDefault(form.getEffectiveFrom(), nowUtc);
-        LocalDateTime effectiveTo = parseDateTimeOrNull(form.getEffectiveTo());
-        if (effectiveTo != null && !effectiveTo.isAfter(effectiveFrom)) {
+        LocalDateTime now = now();
+        LocalDateTime effectiveFrom = parseDateTimeRequired(form.getEffectiveFrom(), "开始时间不能为空");
+        LocalDateTime effectiveTo = parseDateTimeRequired(form.getEffectiveTo(), "结束时间不能为空");
+        if (!effectiveTo.isAfter(effectiveFrom)) {
             throw new ServiceException("结束时间必须晚于开始时间");
         }
         bindingMapper.update(null, new LambdaUpdateWrapper<AiUserPackageBinding>()
             .eq(AiUserPackageBinding::getUserId, form.getUserId())
             .eq(AiUserPackageBinding::getStatus, STATUS_ENABLED)
             .set(AiUserPackageBinding::getStatus, STATUS_DISABLED)
-            .set(AiUserPackageBinding::getEffectiveTo, nowUtc)
-            .set(AiUserPackageBinding::getUpdateTime, LocalDateTime.now()));
+            .set(AiUserPackageBinding::getEffectiveTo, now)
+            .set(AiUserPackageBinding::getUpdateTime, now));
 
         AiUserPackageBinding entity = new AiUserPackageBinding();
         entity.setUserId(form.getUserId());
@@ -288,21 +295,21 @@ public class AiAdminServiceImpl implements IAiAdminService {
         entity.setEffectiveFrom(effectiveFrom);
         entity.setEffectiveTo(effectiveTo);
         entity.setRemark(form.getRemark());
-        entity.setCreateTime(LocalDateTime.now());
-        entity.setUpdateTime(LocalDateTime.now());
+        entity.setCreateTime(now);
+        entity.setUpdateTime(now);
         bindingMapper.insert(entity);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unbindUserPackage(Long userId) {
-        LocalDateTime nowUtc = LocalDateTime.now(UTC_ZONE);
+        LocalDateTime now = now();
         bindingMapper.update(null, new LambdaUpdateWrapper<AiUserPackageBinding>()
             .eq(AiUserPackageBinding::getUserId, userId)
             .eq(AiUserPackageBinding::getStatus, STATUS_ENABLED)
             .set(AiUserPackageBinding::getStatus, STATUS_DISABLED)
-            .set(AiUserPackageBinding::getEffectiveTo, nowUtc)
-            .set(AiUserPackageBinding::getUpdateTime, LocalDateTime.now()));
+            .set(AiUserPackageBinding::getEffectiveTo, now)
+            .set(AiUserPackageBinding::getUpdateTime, now));
     }
 
     @Override
@@ -312,13 +319,7 @@ public class AiAdminServiceImpl implements IAiAdminService {
             return emptyPageResult();
         }
         Page<AiUsageRecord> page = new Page<>(query.getPageNum(), query.getPageSize());
-        LambdaQueryWrapper<AiUsageRecord> wrapper = new LambdaQueryWrapper<AiUsageRecord>()
-            .eq(query.getUserId() != null, AiUsageRecord::getUserId, query.getUserId())
-            .in(query.getUserId() == null && userIds != null, AiUsageRecord::getUserId, userIds)
-            .eq(query.getPackageId() != null, AiUsageRecord::getPackageId, query.getPackageId())
-            .eq(StringUtils.isNotBlank(query.getRequestStatus()), AiUsageRecord::getRequestStatus, query.getRequestStatus())
-            .ge(StringUtils.isNotBlank(query.getOccurredFrom()), AiUsageRecord::getOccurredAt, parseDateTimeOrNull(query.getOccurredFrom()))
-            .le(StringUtils.isNotBlank(query.getOccurredTo()), AiUsageRecord::getOccurredAt, parseDateTimeOrNull(query.getOccurredTo()))
+        LambdaQueryWrapper<AiUsageRecord> wrapper = buildUsageRecordQueryWrapper(query, userIds)
             .orderByDesc(AiUsageRecord::getOccurredAt)
             .orderByDesc(AiUsageRecord::getId);
         Page<AiUsageRecord> result = usageRecordMapper.selectPage(page, wrapper);
@@ -333,7 +334,7 @@ public class AiAdminServiceImpl implements IAiAdminService {
             .map(AiUsageRecord::getUpstreamId)
             .filter(Objects::nonNull)
             .distinct()
-            .toList(), upstreamMapper::selectBatchIds, AiPackageUpstream::getId);
+            .toList(), this::selectUsageUpstreamsByIds, AiPackageUpstream::getId);
         Map<Long, SysUser> userMap = selectEntityMapByIds(records.stream()
             .map(AiUsageRecord::getUserId)
             .filter(Objects::nonNull)
@@ -373,6 +374,32 @@ public class AiAdminServiceImpl implements IAiAdminService {
     }
 
     @Override
+    public AiUsageTotalVo getUsageTotals(AiUsageQuery query) {
+        List<Long> userIds = resolveUsageQueryUserIds(query);
+        if (userIds != null && userIds.isEmpty()) {
+            return emptyUsageTotal();
+        }
+        QueryWrapper<AiUsageRecord> wrapper = buildUsageTotalQueryWrapper(query, userIds);
+        wrapper.select("COUNT(*) AS requestCount",
+            "COALESCE(SUM(CASE WHEN request_status = 'success' THEN 1 ELSE 0 END), 0) AS successCount",
+            "COALESCE(SUM(input_tokens), 0) AS inputTokens",
+            "COALESCE(SUM(output_tokens), 0) AS outputTokens",
+            "COALESCE(SUM(total_tokens), 0) AS totalTokens");
+        List<Map<String, Object>> rows = usageRecordMapper.selectMaps(wrapper);
+        if (rows == null || rows.isEmpty()) {
+            return emptyUsageTotal();
+        }
+        Map<String, Object> row = rows.get(0);
+        AiUsageTotalVo totalVo = new AiUsageTotalVo();
+        totalVo.setRequestCount(toLong(row.get("requestCount")));
+        totalVo.setSuccessCount(toLong(row.get("successCount")));
+        totalVo.setInputTokens(toLong(row.get("inputTokens")));
+        totalVo.setOutputTokens(toLong(row.get("outputTokens")));
+        totalVo.setTotalTokens(toLong(row.get("totalTokens")));
+        return totalVo;
+    }
+
+    @Override
     public AiUsageSummaryVo getUsageSummary(AiUsageQuery query) {
         Long userId = resolveSingleUsageSummaryUserId(query);
         if (userId == null) {
@@ -383,29 +410,56 @@ public class AiAdminServiceImpl implements IAiAdminService {
 
     @Override
     public AiUsageSummaryVo getUsageSummary(Long userId) {
-        LocalDateTime nowUtc = LocalDateTime.now(UTC_ZONE);
-        AiUserPackageBinding binding = getCurrentBindingEntity(userId, nowUtc);
+        LocalDateTime now = now();
+        AiUserPackageBinding binding = getCurrentBindingEntity(userId, now);
         if (binding == null) {
             return null;
         }
         AiPackage aiPackage = packageMapper.selectById(binding.getPackageId());
+        if (!isPackageUsable(aiPackage)) {
+            return null;
+        }
         SysUser user = userMapper.selectById(userId);
-        AiUsageSnapshot snapshot = getUsageSnapshot(userId, nowUtc);
+        AiUsageSnapshot snapshot = getUsageSnapshot(userId, now, binding);
         AiUsageSummaryVo summaryVo = new AiUsageSummaryVo();
         summaryVo.setUserId(userId);
         summaryVo.setUserName(user == null ? null : user.getUserName());
         summaryVo.setPackageId(aiPackage.getId());
         summaryVo.setPackageCode(aiPackage.getPackageCode());
         summaryVo.setPackageName(aiPackage.getPackageName());
+        summaryVo.setPackageEffectiveFrom(formatDateTime(binding.getEffectiveFrom()));
+        summaryVo.setPackageEffectiveTo(formatDateTime(binding.getEffectiveTo()));
         summaryVo.setFiveHourUsedTokens(snapshot.getFiveHourUsedTokens());
         summaryVo.setFiveHourTokenLimit(aiPackage.getFiveHourTokenLimit());
         summaryVo.setWeeklyUsedTokens(snapshot.getWeeklyUsedTokens());
         summaryVo.setWeeklyTokenLimit(aiPackage.getWeeklyTokenLimit());
-        summaryVo.setMonthlyUsedTokens(snapshot.getMonthlyUsedTokens());
-        summaryVo.setMonthlyTokenLimit(aiPackage.getMonthlyTokenLimit());
         summaryVo.setFiveHourQuotaPercent(calculateQuotaPercent(snapshot.getFiveHourUsedTokens(), aiPackage.getFiveHourTokenLimit()));
         summaryVo.setWeeklyQuotaPercent(calculateQuotaPercent(snapshot.getWeeklyUsedTokens(), aiPackage.getWeeklyTokenLimit()));
-        summaryVo.setMonthlyQuotaPercent(calculateQuotaPercent(snapshot.getMonthlyUsedTokens(), aiPackage.getMonthlyTokenLimit()));
+        LocalDateTime bindingLimitAt = binding.getEffectiveTo();
+        LocalDateTime fiveHourCycleStartAt = calculateFiveHourCycleStartAt(userId, binding, now);
+        LocalDateTime weeklyCycleStartAt = calculateFixedCycleStartAt(binding.getEffectiveFrom(), now, WEEKLY_PACKAGE_CYCLE);
+        LocalDateTime fiveHourNextRefreshAt = capAtBindingEnd(
+            calculateFixedCycleNextRefreshAt(fiveHourCycleStartAt, FIVE_HOUR_PACKAGE_CYCLE),
+            bindingLimitAt
+        );
+        LocalDateTime weeklyNextRefreshAt = capAtBindingEnd(
+            calculateFixedCycleNextRefreshAt(weeklyCycleStartAt, WEEKLY_PACKAGE_CYCLE),
+            bindingLimitAt
+        );
+        LocalDateTime fiveHourAvailableAt = capAtBindingEnd(
+            calculateFixedCycleQuotaAvailableAt(snapshot.getFiveHourUsedTokens(), aiPackage.getFiveHourTokenLimit(), fiveHourNextRefreshAt),
+            bindingLimitAt
+        );
+        LocalDateTime weeklyAvailableAt = capAtBindingEnd(
+            calculateFixedCycleQuotaAvailableAt(snapshot.getWeeklyUsedTokens(), aiPackage.getWeeklyTokenLimit(), weeklyNextRefreshAt),
+            bindingLimitAt
+        );
+        LocalDateTime quotaAvailableAt = maxDateTime(fiveHourAvailableAt, weeklyAvailableAt);
+        summaryVo.setFiveHourQuotaAvailableAt(formatDateTime(fiveHourAvailableAt));
+        summaryVo.setFiveHourNextRefreshAt(formatDateTime(fiveHourNextRefreshAt));
+        summaryVo.setWeeklyQuotaAvailableAt(formatDateTime(weeklyAvailableAt));
+        summaryVo.setWeeklyNextRefreshAt(formatDateTime(weeklyNextRefreshAt));
+        summaryVo.setQuotaAvailableAt(formatDateTime(quotaAvailableAt));
         return summaryVo;
     }
 
@@ -415,16 +469,22 @@ public class AiAdminServiceImpl implements IAiAdminService {
     }
 
     @Override
-    public AiUserPackageBinding getCurrentBindingEntity(Long userId, LocalDateTime nowUtc) {
-        return bindingMapper.selectCurrentBinding(userId, nowUtc);
+    public AiUserPackageBinding getCurrentBindingEntity(Long userId, LocalDateTime now) {
+        return bindingMapper.selectCurrentBinding(userId, now);
     }
 
     @Override
-    public AiUsageSnapshot getUsageSnapshot(Long userId, LocalDateTime nowUtc) {
+    public AiUsageSnapshot getUsageSnapshot(Long userId, LocalDateTime now) {
+        AiUserPackageBinding binding = getCurrentBindingEntity(userId, now);
+        return getUsageSnapshot(userId, now, binding);
+    }
+
+    private AiUsageSnapshot getUsageSnapshot(Long userId, LocalDateTime now, AiUserPackageBinding binding) {
         AiUsageSnapshot snapshot = new AiUsageSnapshot();
-        snapshot.setFiveHourUsedTokens(defaultZero(usageRecordMapper.sumSuccessTokensSince(userId, nowUtc.minusHours(5))));
-        snapshot.setWeeklyUsedTokens(defaultZero(usageRecordMapper.sumSuccessTokensSince(userId, nowUtc.minusDays(7))));
-        snapshot.setMonthlyUsedTokens(defaultZero(usageRecordMapper.sumSuccessTokensSince(userId, currentMonthStartUtc())));
+        LocalDateTime fiveHourCycleStartAt = calculateFiveHourCycleStartAt(userId, binding, now);
+        LocalDateTime weeklyCycleStartAt = calculateFixedCycleStartAt(binding == null ? null : binding.getEffectiveFrom(), now, WEEKLY_PACKAGE_CYCLE);
+        snapshot.setFiveHourUsedTokens(fiveHourCycleStartAt == null ? 0L : defaultZero(usageRecordMapper.sumSuccessTokensBetween(userId, fiveHourCycleStartAt, now)));
+        snapshot.setWeeklyUsedTokens(weeklyCycleStartAt == null ? 0L : defaultZero(usageRecordMapper.sumSuccessTokensBetween(userId, weeklyCycleStartAt, now)));
         return snapshot;
     }
 
@@ -466,10 +526,24 @@ public class AiAdminServiceImpl implements IAiAdminService {
         return pageResult;
     }
 
+    private AiUsageTotalVo emptyUsageTotal() {
+        AiUsageTotalVo totalVo = new AiUsageTotalVo();
+        totalVo.setRequestCount(0L);
+        totalVo.setSuccessCount(0L);
+        totalVo.setInputTokens(0L);
+        totalVo.setOutputTokens(0L);
+        totalVo.setTotalTokens(0L);
+        return totalVo;
+    }
+
     private void validatePackageCode(String packageCode) {
         if (!ALLOWED_PACKAGE_CODES.contains(packageCode)) {
             throw new ServiceException("套餐编码只允许 plus、pro、max");
         }
+    }
+
+    private boolean isPackageUsable(AiPackage aiPackage) {
+        return aiPackage != null && STATUS_ENABLED.equals(aiPackage.getStatus());
     }
 
     private void validateTokenLimit(Long value, String fieldName) {
@@ -495,6 +569,16 @@ public class AiAdminServiceImpl implements IAiAdminService {
         return value == null ? 0L : value;
     }
 
+    private Long toLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(String.valueOf(value));
+    }
+
     /**
      * 计算额度使用百分比；限额为空、非正数时统一返回 0，避免前端再处理异常除零。
      *
@@ -510,6 +594,37 @@ public class AiAdminServiceImpl implements IAiAdminService {
             .multiply(BigDecimal.valueOf(100))
             .divide(BigDecimal.valueOf(tokenLimit), 2, RoundingMode.HALF_UP)
             .doubleValue();
+    }
+
+    /**
+     * 固定周期额度只在当前周期结束时恢复。
+     */
+    private LocalDateTime calculateFixedCycleQuotaAvailableAt(Long usedTokens, Long tokenLimit, LocalDateTime nextRefreshAt) {
+        if (!isQuotaExceeded(usedTokens, tokenLimit)) {
+            return null;
+        }
+        return nextRefreshAt;
+    }
+
+    private boolean isQuotaExceeded(Long usedTokens, Long tokenLimit) {
+        return usedTokens != null && tokenLimit != null && tokenLimit > 0 && usedTokens >= tokenLimit;
+    }
+
+    private LocalDateTime maxDateTime(LocalDateTime... values) {
+        return Arrays.stream(values)
+            .filter(Objects::nonNull)
+            .max(LocalDateTime::compareTo)
+            .orElse(null);
+    }
+
+    private LocalDateTime capAtBindingEnd(LocalDateTime candidate, LocalDateTime bindingEnd) {
+        if (candidate == null) {
+            return null;
+        }
+        if (bindingEnd == null || !bindingEnd.isBefore(candidate)) {
+            return candidate;
+        }
+        return bindingEnd;
     }
 
     /**
@@ -531,16 +646,45 @@ public class AiAdminServiceImpl implements IAiAdminService {
             .collect(Collectors.toMap(idExtractor, Function.identity()));
     }
 
-    private LocalDateTime parseDateTimeOrDefault(String value, LocalDateTime defaultValue) {
-        if (StringUtils.isBlank(value)) {
-            return defaultValue;
-        }
-        return LocalDateTime.parse(value);
+    /**
+     * 用量列表只需要回填上游名称，避免旧库缺少上游扩展字段时全字段查询失败。
+     */
+    private List<AiPackageUpstream> selectUsageUpstreamsByIds(List<Long> ids) {
+        return upstreamMapper.selectList(new LambdaQueryWrapper<AiPackageUpstream>()
+            .select(AiPackageUpstream::getId, AiPackageUpstream::getUpstreamName)
+            .in(AiPackageUpstream::getId, ids));
+    }
+
+    private LambdaQueryWrapper<AiUsageRecord> buildUsageRecordQueryWrapper(AiUsageQuery query, List<Long> userIds) {
+        return new LambdaQueryWrapper<AiUsageRecord>()
+            .eq(query.getUserId() != null, AiUsageRecord::getUserId, query.getUserId())
+            .in(query.getUserId() == null && userIds != null, AiUsageRecord::getUserId, userIds)
+            .eq(query.getPackageId() != null, AiUsageRecord::getPackageId, query.getPackageId())
+            .eq(StringUtils.isNotBlank(query.getRequestStatus()), AiUsageRecord::getRequestStatus, query.getRequestStatus())
+            .ge(StringUtils.isNotBlank(query.getOccurredFrom()), AiUsageRecord::getOccurredAt, parseDateTimeOrNull(query.getOccurredFrom()))
+            .le(StringUtils.isNotBlank(query.getOccurredTo()), AiUsageRecord::getOccurredAt, parseDateTimeOrNull(query.getOccurredTo()));
+    }
+
+    private QueryWrapper<AiUsageRecord> buildUsageTotalQueryWrapper(AiUsageQuery query, List<Long> userIds) {
+        return new QueryWrapper<AiUsageRecord>()
+            .eq(query.getUserId() != null, "user_id", query.getUserId())
+            .in(query.getUserId() == null && userIds != null, "user_id", userIds)
+            .eq(query.getPackageId() != null, "package_id", query.getPackageId())
+            .eq(StringUtils.isNotBlank(query.getRequestStatus()), "request_status", query.getRequestStatus())
+            .ge(StringUtils.isNotBlank(query.getOccurredFrom()), "occurred_at", parseDateTimeOrNull(query.getOccurredFrom()))
+            .le(StringUtils.isNotBlank(query.getOccurredTo()), "occurred_at", parseDateTimeOrNull(query.getOccurredTo()));
     }
 
     private LocalDateTime parseDateTimeOrNull(String value) {
         if (StringUtils.isBlank(value)) {
             return null;
+        }
+        return LocalDateTime.parse(value);
+    }
+
+    private LocalDateTime parseDateTimeRequired(String value, String message) {
+        if (StringUtils.isBlank(value)) {
+            throw new ServiceException(message);
         }
         return LocalDateTime.parse(value);
     }
@@ -552,15 +696,36 @@ public class AiAdminServiceImpl implements IAiAdminService {
         return value.format(DATE_TIME_FORMATTER);
     }
 
-    /**
-     * 计算当前服务时区自然月起点对应的 UTC 时间。
-     *
-     * @return 当前自然月 UTC 起点
-     */
-    private LocalDateTime currentMonthStartUtc() {
-        ZoneId serviceZone = ZoneId.systemDefault();
-        ZonedDateTime serviceNow = ZonedDateTime.now(serviceZone);
-        LocalDate firstDay = serviceNow.withDayOfMonth(1).toLocalDate();
-        return firstDay.atStartOfDay(serviceZone).withZoneSameInstant(UTC_ZONE).toLocalDateTime();
+    private LocalDateTime now() {
+        return LocalDateTime.now(aiBusinessClock);
+    }
+
+    private LocalDateTime calculateFiveHourCycleStartAt(Long userId, AiUserPackageBinding binding, LocalDateTime now) {
+        if (binding == null || binding.getEffectiveFrom() == null || binding.getEffectiveFrom().isAfter(now)) {
+            return null;
+        }
+        AiUsageRecord firstSuccessRecord = usageRecordMapper.selectFirstSuccessRecordBetween(userId, binding.getEffectiveFrom(), now);
+        if (firstSuccessRecord == null || firstSuccessRecord.getOccurredAt() == null) {
+            return null;
+        }
+        return calculateFixedCycleStartAt(firstSuccessRecord.getOccurredAt(), now, FIVE_HOUR_PACKAGE_CYCLE);
+    }
+
+    private LocalDateTime calculateFixedCycleStartAt(LocalDateTime anchorAt, LocalDateTime now, Duration cycle) {
+        if (anchorAt == null || anchorAt.isAfter(now)) {
+            return null;
+        }
+        long cycleMillis = cycle.toMillis();
+        long elapsedMillis = Duration.between(anchorAt, now).toMillis();
+        long cycleIndex = Math.max(0L, elapsedMillis / cycleMillis);
+        LocalDateTime cycleStart = anchorAt.plus(cycle.multipliedBy(cycleIndex));
+        while (!cycleStart.plus(cycle).isAfter(now)) {
+            cycleStart = cycleStart.plus(cycle);
+        }
+        return cycleStart;
+    }
+
+    private LocalDateTime calculateFixedCycleNextRefreshAt(LocalDateTime cycleStartAt, Duration cycle) {
+        return cycleStartAt == null ? null : cycleStartAt.plus(cycle);
     }
 }

@@ -27,6 +27,7 @@ import {
   isLoginButtonDisabled,
   resolveAvatarText,
   resolveDisplayName,
+  resolveQuotaAvailableAt,
   resolvePackageLabel,
   resolveQuotaProgressItems,
 } from "@/features/settings/settings-panel-helpers";
@@ -459,6 +460,7 @@ export function SettingsPanel({
   const displayName = resolveDisplayName(authInfo, userProfile);
   const avatarText = resolveAvatarText(displayName);
   const packageLabel = resolvePackageLabel(userPackageSummary);
+  const quotaAvailableAt = resolveQuotaAvailableAt(userPackageSummary);
   const quotaProgressItems = resolveQuotaProgressItems(userPackageSummary);
 
   return (
@@ -477,6 +479,7 @@ export function SettingsPanel({
               onOpenLoginDialog={() => void openLoginDialog()}
               onOpenWechatLogin={() => void openWechatLoginDialog()}
               packageLabel={packageLabel}
+              quotaAvailableAt={quotaAvailableAt}
               quotaProgressItems={quotaProgressItems}
               userPackageSummaryError={userPackageSummaryError}
               userProfile={userProfile}

@@ -6,15 +6,15 @@ export interface AiUserPackageBindingVO {
   packageCode?: string;
   packageName?: string;
   status?: string;
-  effectiveFrom?: string;
-  effectiveTo?: string;
+  effectiveFrom: string;
+  effectiveTo: string;
   remark?: string;
 }
 
 export interface AiUserPackageBindingForm {
   userId: string | number;
   packageId: string | number;
-  effectiveFrom?: string;
-  effectiveTo?: string;
+  effectiveFrom: string;
+  effectiveTo: string;
   remark?: string;
 }

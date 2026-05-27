@@ -38,7 +38,6 @@
         <el-table-column label="套餐名称" align="center" prop="packageName" min-width="140" />
         <el-table-column label="5小时限额" align="center" prop="fiveHourTokenLimit" min-width="120" />
         <el-table-column label="周限额" align="center" prop="weeklyTokenLimit" min-width="120" />
-        <el-table-column label="月限额" align="center" prop="monthlyTokenLimit" min-width="120" />
         <el-table-column label="状态" align="center" width="100">
           <template #default="scope">
             <el-switch v-model="scope.row.status" active-value="0" inactive-value="1" @change="handleStatusChange(scope.row)"></el-switch>
@@ -80,9 +79,6 @@
         </el-form-item>
         <el-form-item label="周限额" prop="weeklyTokenLimit">
           <el-input-number v-model="form.weeklyTokenLimit" :min="0" controls-position="right" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="月限额" prop="monthlyTokenLimit">
-          <el-input-number v-model="form.monthlyTokenLimit" :min="0" controls-position="right" style="width: 100%" />
         </el-form-item>
         <el-form-item label="备注" prop="remark">
           <el-input v-model="form.remark" type="textarea" placeholder="请输入备注" />
@@ -137,8 +133,8 @@
           <el-form-item label="API Key" prop="apiKey">
             <el-input v-model="upstreamForm.apiKey" type="password" show-password placeholder="请输入 API Key" />
           </el-form-item>
-          <el-form-item label="推理 JSON" prop="reasoningJson">
-            <el-input v-model="upstreamForm.reasoningJson" type="textarea" :rows="4" placeholder='例如 {"effort":"medium"}' />
+          <el-form-item label="扩展参数 JSON" prop="extraParamsJson">
+            <el-input v-model="upstreamForm.extraParamsJson" type="textarea" :rows="4" placeholder='例如 {"reasoning":{"effort":"medium"},"reasoning_split":true}' />
           </el-form-item>
           <el-row :gutter="12">
             <el-col :span="12">
@@ -224,7 +220,6 @@ const initFormData: AiPackageForm = {
   packageName: '',
   fiveHourTokenLimit: 0,
   weeklyTokenLimit: 0,
-  monthlyTokenLimit: 0,
   remark: ''
 };
 
@@ -234,7 +229,7 @@ const initUpstreamFormData: AiPackageUpstreamForm = {
   baseUrl: '',
   apiKey: '',
   model: '',
-  reasoningJson: '',
+  extraParamsJson: '',
   weight: 1,
   priority: 0,
   remark: ''
@@ -252,8 +247,7 @@ const data = reactive<PageData<AiPackageForm, AiPackageQuery>>({
     packageCode: [{ required: true, message: '套餐编码不能为空', trigger: 'change' }],
     packageName: [{ required: true, message: '套餐名称不能为空', trigger: 'blur' }],
     fiveHourTokenLimit: [{ required: true, message: '5小时限额不能为空', trigger: 'blur' }],
-    weeklyTokenLimit: [{ required: true, message: '周限额不能为空', trigger: 'blur' }],
-    monthlyTokenLimit: [{ required: true, message: '月限额不能为空', trigger: 'blur' }]
+    weeklyTokenLimit: [{ required: true, message: '周限额不能为空', trigger: 'blur' }]
   }
 });
 

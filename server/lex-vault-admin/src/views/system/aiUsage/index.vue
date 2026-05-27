@@ -40,15 +40,26 @@
           <span class="text-[13px] text-[var(--el-text-color-secondary)]">{{ summary.packageName }} / {{ summary.packageCode }}</span>
         </div>
       </template>
+      <el-alert
+        v-if="summary.quotaAvailableAt"
+        class="mb-[12px]"
+        type="warning"
+        :closable="false"
+        show-icon
+        :title="`当前额度受限，预计 ${summary.quotaAvailableAt} 后恢复可用`"
+      />
       <el-row :gutter="12">
-        <el-col :md="8" :xs="24">
+        <el-col :md="12" :xs="24">
           <el-statistic title="5小时已用 / 限额" :value="`${summary.fiveHourUsedTokens} / ${summary.fiveHourTokenLimit}`" />
+          <div class="mt-[6px] text-[13px] text-[var(--el-text-color-secondary)]">
+            {{ formatQuotaAvailable(summary.fiveHourQuotaAvailableAt) }}
+          </div>
         </el-col>
-        <el-col :md="8" :xs="24">
+        <el-col :md="12" :xs="24">
           <el-statistic title="7天已用 / 限额" :value="`${summary.weeklyUsedTokens} / ${summary.weeklyTokenLimit}`" />
-        </el-col>
-        <el-col :md="8" :xs="24">
-          <el-statistic title="月已用 / 限额" :value="`${summary.monthlyUsedTokens} / ${summary.monthlyTokenLimit}`" />
+          <div class="mt-[6px] text-[13px] text-[var(--el-text-color-secondary)]">
+            {{ formatQuotaAvailable(summary.weeklyQuotaAvailableAt) }}
+          </div>
         </el-col>
       </el-row>
     </el-card>
@@ -126,6 +137,10 @@ const resetQuery = () => {
   queryFormRef.value?.resetFields();
   summary.value = undefined;
   handleQuery();
+};
+
+const formatQuotaAvailable = (value?: string) => {
+  return value ? `预计 ${value} 后恢复可用` : '当前可用';
 };
 
 const loadSummary = async () => {

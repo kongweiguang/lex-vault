@@ -2,12 +2,14 @@ package org.dromara.web.ai.domain.form;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import lombok.Data;
 
 /**
  * AI 套餐上游节点表单。
  *
  * @author kongweiguang
  */
+@Data
 public class AiPackageUpstreamForm {
 
     /**
@@ -45,9 +47,9 @@ public class AiPackageUpstreamForm {
     private String model;
 
     /**
-     * 推理配置 JSON。
+     * 扩展请求参数 JSON，会合并到上游请求体顶层。
      */
-    private String reasoningJson;
+    private String extraParamsJson;
 
     /**
      * 权重。
@@ -66,83 +68,4 @@ public class AiPackageUpstreamForm {
      */
     private String remark;
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public Long getPackageId() {
-        return packageId;
-    }
-
-    public void setPackageId(Long packageId) {
-        this.packageId = packageId;
-    }
-
-    public String getUpstreamName() {
-        return upstreamName;
-    }
-
-    public void setUpstreamName(String upstreamName) {
-        this.upstreamName = upstreamName;
-    }
-
-    public String getBaseUrl() {
-        return baseUrl;
-    }
-
-    public void setBaseUrl(String baseUrl) {
-        this.baseUrl = baseUrl;
-    }
-
-    public String getApiKey() {
-        return apiKey;
-    }
-
-    public void setApiKey(String apiKey) {
-        this.apiKey = apiKey;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public String getReasoningJson() {
-        return reasoningJson;
-    }
-
-    public void setReasoningJson(String reasoningJson) {
-        this.reasoningJson = reasoningJson;
-    }
-
-    public Integer getWeight() {
-        return weight;
-    }
-
-    public void setWeight(Integer weight) {
-        this.weight = weight;
-    }
-
-    public Integer getPriority() {
-        return priority;
-    }
-
-    public void setPriority(Integer priority) {
-        this.priority = priority;
-    }
-
-    public String getRemark() {
-        return remark;
-    }
-
-    public void setRemark(String remark) {
-        this.remark = remark;
-    }
 }

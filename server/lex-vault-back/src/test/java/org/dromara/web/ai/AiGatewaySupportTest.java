@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author kongweiguang
  */
 @Tag("ai.gateway")
+@Tag("dev")
 @DisplayName("AI 网关辅助逻辑测试")
 class AiGatewaySupportTest {
 
@@ -75,26 +76,58 @@ class AiGatewaySupportTest {
         AiPackage aiPackage = new AiPackage();
         aiPackage.setFiveHourTokenLimit(100L);
         aiPackage.setWeeklyTokenLimit(500L);
-        aiPackage.setMonthlyTokenLimit(1000L);
 
         AiUsageSnapshot snapshot = new AiUsageSnapshot();
         snapshot.setFiveHourUsedTokens(100L);
         snapshot.setWeeklyUsedTokens(120L);
-        snapshot.setMonthlyUsedTokens(300L);
 
         QuotaCheckResult result = AiGatewaySupport.checkQuota(aiPackage, snapshot);
 
-        assertFalse(result.isAllowed());
+        assertFalse(Boolean.TRUE.equals(result.getAllowed()));
         assertEquals("five_hour_quota_exceeded", result.getErrorCode());
     }
 
     @Test
-    @DisplayName("构造上游请求体时应覆盖 model reasoning instructions")
+    @DisplayName("额度达到 7 天上限时应返回对应错误码")
+    void shouldRejectWhenWeeklyQuotaExceeded() {
+        AiPackage aiPackage = new AiPackage();
+        aiPackage.setFiveHourTokenLimit(100L);
+        aiPackage.setWeeklyTokenLimit(500L);
+
+        AiUsageSnapshot snapshot = new AiUsageSnapshot();
+        snapshot.setFiveHourUsedTokens(99L);
+        snapshot.setWeeklyUsedTokens(500L);
+
+        QuotaCheckResult result = AiGatewaySupport.checkQuota(aiPackage, snapshot);
+
+        assertFalse(Boolean.TRUE.equals(result.getAllowed()));
+        assertEquals("weekly_quota_exceeded", result.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("只校验 5 小时和 7 天额度")
+    void shouldAllowWhenFiveHourAndWeeklyQuotaAreAvailable() {
+        AiPackage aiPackage = new AiPackage();
+        aiPackage.setFiveHourTokenLimit(100L);
+        aiPackage.setWeeklyTokenLimit(500L);
+
+        AiUsageSnapshot snapshot = new AiUsageSnapshot();
+        snapshot.setFiveHourUsedTokens(80L);
+        snapshot.setWeeklyUsedTokens(300L);
+
+        QuotaCheckResult result = AiGatewaySupport.checkQuota(aiPackage, snapshot);
+
+        assertTrue(Boolean.TRUE.equals(result.getAllowed()));
+        assertNull(result.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("构造上游请求体时应覆盖 model 并合并任意扩展参数")
     void shouldRewriteUpstreamBody() {
         AiPackageUpstream upstream = new AiPackageUpstream();
         upstream.setModel("gpt-5.4");
-        upstream.setReasoningJson("""
-            {"effort":"medium"}
+        upstream.setExtraParamsJson("""
+            {"reasoning":{"effort":"medium"},"reasoning_split":true}
             """);
 
         String rewritten = AiGatewaySupport.buildUpstreamBody("""
@@ -103,6 +136,8 @@ class AiGatewaySupportTest {
 
         assertTrue(rewritten.contains("\"model\":\"gpt-5.4\""));
         assertTrue(rewritten.contains("\"reasoning\""));
+        assertTrue(rewritten.contains("\"effort\":\"medium\""));
+        assertTrue(rewritten.contains("\"reasoning_split\":true"));
         assertTrue(rewritten.contains("\"instructions\""));
     }
 

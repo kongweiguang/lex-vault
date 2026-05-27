@@ -1,15 +1,13 @@
 package org.dromara.web.ai.domain.vo;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 /**
  * AI 用户窗口用量汇总视图对象。
  *
  * @author kongweiguang
  */
-@Setter
-@Getter
+@Data
 public class AiUsageSummaryVo {
 
     /**
@@ -38,6 +36,16 @@ public class AiUsageSummaryVo {
     private String packageName;
 
     /**
+     * 当前套餐生效开始时间。
+     */
+    private String packageEffectiveFrom;
+
+    /**
+     * 当前套餐到期时间；长期有效时为空。
+     */
+    private String packageEffectiveTo;
+
+    /**
      * 最近 5 小时已用 token。
      */
     private Long fiveHourUsedTokens;
@@ -58,19 +66,19 @@ public class AiUsageSummaryVo {
     private Long weeklyTokenLimit;
 
     /**
-     * 当前自然月已用 token。
-     */
-    private Long monthlyUsedTokens;
-
-    /**
-     * 当前自然月限额。
-     */
-    private Long monthlyTokenLimit;
-
-    /**
      * 最近 5 小时额度百分比。
      */
     private Double fiveHourQuotaPercent;
+
+    /**
+     * 最近 5 小时额度恢复可用时间；未触发该窗口限额时为空。
+     */
+    private String fiveHourQuotaAvailableAt;
+
+    /**
+     * 最近 5 小时额度下次刷新时间点；当前窗口无成功用量时为空。
+     */
+    private String fiveHourNextRefreshAt;
 
     /**
      * 最近 7 天额度百分比。
@@ -78,8 +86,18 @@ public class AiUsageSummaryVo {
     private Double weeklyQuotaPercent;
 
     /**
-     * 当前自然月额度百分比。
+     * 最近 7 天额度恢复可用时间；未触发该窗口限额时为空。
      */
-    private Double monthlyQuotaPercent;
+    private String weeklyQuotaAvailableAt;
+
+    /**
+     * 最近 7 天额度下次刷新时间点；当前窗口无成功用量时为空。
+     */
+    private String weeklyNextRefreshAt;
+
+    /**
+     * 综合额度恢复可用时间；多个窗口同时超限时取最晚恢复时间，当前可用时为空。
+     */
+    private String quotaAvailableAt;
 
 }

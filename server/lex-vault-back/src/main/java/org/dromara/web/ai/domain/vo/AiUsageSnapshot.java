@@ -1,10 +1,13 @@
 package org.dromara.web.ai.domain.vo;
 
+import lombok.Data;
+
 /**
  * AI 配额窗口快照。
  *
  * @author kongweiguang
  */
+@Data
 public class AiUsageSnapshot {
 
     /**
@@ -17,32 +20,4 @@ public class AiUsageSnapshot {
      */
     private Long weeklyUsedTokens;
 
-    /**
-     * 当前自然月已用 token。
-     */
-    private Long monthlyUsedTokens;
-
-    public Long getFiveHourUsedTokens() {
-        return fiveHourUsedTokens;
-    }
-
-    public void setFiveHourUsedTokens(Long fiveHourUsedTokens) {
-        this.fiveHourUsedTokens = fiveHourUsedTokens;
-    }
-
-    public Long getWeeklyUsedTokens() {
-        return weeklyUsedTokens;
-    }
-
-    public void setWeeklyUsedTokens(Long weeklyUsedTokens) {
-        this.weeklyUsedTokens = weeklyUsedTokens;
-    }
-
-    public Long getMonthlyUsedTokens() {
-        return monthlyUsedTokens;
-    }
-
-    public void setMonthlyUsedTokens(Long monthlyUsedTokens) {
-        this.monthlyUsedTokens = monthlyUsedTokens;
-    }
 }

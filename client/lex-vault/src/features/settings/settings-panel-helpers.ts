@@ -45,6 +45,10 @@ export type QuotaProgressItem = {
   percent: number;
   /** 供界面直接展示的剩余额度百分比文案。 */
   percentText: string;
+  /** 下次刷新时间点。 */
+  nextRefreshAt?: string;
+  /** 供界面直接展示的刷新文案。 */
+  refreshText: string;
 };
 
 /** 解析设置页账号卡片展示的套餐名称。 */
@@ -56,11 +60,13 @@ export function resolvePackageLabel(packageSummary: UserPackageSummary | null) {
 
   const packageName = firstNonEmptyText(summary.packageName, summary.aiPackageName, summary.currentPackageName);
   const packageCode = firstNonEmptyText(summary.packageCode, summary.aiPackageCode, summary.currentPackageCode);
-  return packageName || packageCode || "";
+  const label = packageName || packageCode || "";
+  const packageEffectiveTo = normalizeDateTimeText(summary.packageEffectiveTo);
+  return label && packageEffectiveTo ? `${label}（到期：${packageEffectiveTo}）` : label;
 }
 
 /** 解析设置页额度进度条。 */
-export function resolveQuotaProgressItems(packageSummary: UserPackageSummary | null) {
+export function resolveQuotaProgressItems(packageSummary: UserPackageSummary | null): QuotaProgressItem[] {
   const summary = packageSummary as (UserPackageSummary & Record<string, unknown>) | null;
   if (!summary) {
     return [] satisfies QuotaProgressItem[];
@@ -69,24 +75,20 @@ export function resolveQuotaProgressItems(packageSummary: UserPackageSummary | n
   const items = [
     createQuotaProgressItem(
       "5小时",
+      summary.fiveHourNextRefreshAt,
       summary.fiveHourQuotaPercent,
       summary.fiveHourUsagePercent,
       summary.fiveHourPercent,
     ),
     createQuotaProgressItem(
       "7天",
+      summary.weeklyNextRefreshAt,
       summary.weeklyQuotaPercent,
       summary.weeklyUsagePercent,
       summary.weeklyPercent,
       summary.sevenDayQuotaPercent,
       summary.sevenDayUsagePercent,
       summary.sevenDayPercent,
-    ),
-    createQuotaProgressItem(
-      "月",
-      summary.monthlyQuotaPercent,
-      summary.monthlyUsagePercent,
-      summary.monthlyPercent,
     ),
   ].filter((item): item is QuotaProgressItem => item !== null);
 
@@ -131,17 +133,32 @@ function normalizePercentNumber(...values: unknown[]) {
 }
 
 /** 生成单个剩余额度进度条项。 */
-function createQuotaProgressItem(label: string, ...values: unknown[]) {
+function createQuotaProgressItem(label: string, nextRefreshAt: unknown, ...values: unknown[]): QuotaProgressItem | null {
   const usedPercent = normalizePercentNumber(...values);
   if (usedPercent == null) {
     return null;
   }
   const remainingPercent = clampPercent(100 - usedPercent);
-  return {
+  const normalizedNextRefreshAt = normalizeDateTimeText(nextRefreshAt);
+  const item: QuotaProgressItem = {
     label,
     percent: remainingPercent,
     percentText: `${trimTrailingZero(remainingPercent)}%`,
-  } satisfies QuotaProgressItem;
+    refreshText: normalizedNextRefreshAt ? `下次刷新 ${normalizedNextRefreshAt}` : "暂无待刷新时间",
+  };
+  if (normalizedNextRefreshAt) {
+    item.nextRefreshAt = normalizedNextRefreshAt;
+  }
+  return item;
+}
+
+/** 解析综合恢复时间。 */
+export function resolveQuotaAvailableAt(packageSummary: UserPackageSummary | null) {
+  const summary = packageSummary as (UserPackageSummary & Record<string, unknown>) | null;
+  if (!summary) {
+    return "";
+  }
+  return normalizeDateTimeText(summary.quotaAvailableAt);
 }
 
 /** 去除百分比小数末尾多余的 0。 */
@@ -152,6 +169,11 @@ function trimTrailingZero(value: number) {
 /** 限制百分比数值范围，避免异常数据把进度条撑出边界。 */
 function clampPercent(value: number) {
   return Math.min(100, Math.max(0, value));
+}
+
+/** 取第一个非空恢复时间文本。 */
+function normalizeDateTimeText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
 /** 判断登录按钮是否可提交。 */

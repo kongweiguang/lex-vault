@@ -13,6 +13,7 @@ const baseProps = {
   onOpenLoginDialog: vi.fn(),
   onOpenWechatLogin: vi.fn(),
   packageLabel: "",
+  quotaAvailableAt: "",
   quotaProgressItems: [],
   userPackageSummaryError: "",
   userProfile: null,
@@ -36,5 +37,26 @@ describe("SettingsAccountSection", () => {
     expect(html).toContain("微信连接中");
     expect(html).toContain("disabled");
     expect(html).toContain("退出登录");
+  });
+
+  it("额度受限时展示恢复可用时间", () => {
+    const html = renderToStaticMarkup(
+      <SettingsAccountSection
+        {...baseProps}
+        quotaAvailableAt="2026-05-27 18:00:00"
+        quotaProgressItems={[
+          {
+            label: "5小时",
+            percent: 0,
+            percentText: "0%",
+            nextRefreshAt: "2026-05-27 18:00:00",
+            refreshText: "下次刷新 2026-05-27 18:00:00",
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain("当前额度受限，预计 2026-05-27 18:00:00 后恢复可用");
+    expect(html).toContain("下次刷新 2026-05-27 18:00:00");
   });
 });

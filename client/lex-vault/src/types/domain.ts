@@ -679,12 +679,24 @@ export type UserPackageSummary = {
   packageCode?: string;
   /** 当前绑定套餐名称。 */
   packageName?: string;
+  /** 当前套餐生效开始时间。 */
+  packageEffectiveFrom?: string;
+  /** 当前套餐到期时间。 */
+  packageEffectiveTo?: string;
   /** 最近 5 小时额度百分比，后端按百分比返回时优先使用。 */
   fiveHourQuotaPercent?: number | string;
   /** 最近 7 天额度百分比，后端按百分比返回时优先使用。 */
   weeklyQuotaPercent?: number | string;
-  /** 当前自然月额度百分比，后端按百分比返回时优先使用。 */
-  monthlyQuotaPercent?: number | string;
+  /** 最近 5 小时额度恢复可用时间。 */
+  fiveHourQuotaAvailableAt?: string;
+  /** 最近 5 小时额度下次刷新时间点。 */
+  fiveHourNextRefreshAt?: string;
+  /** 最近 7 天额度恢复可用时间。 */
+  weeklyQuotaAvailableAt?: string;
+  /** 最近 7 天额度下次刷新时间点。 */
+  weeklyNextRefreshAt?: string;
+  /** 综合额度恢复可用时间。 */
+  quotaAvailableAt?: string;
 };
 
 /** 文件内容预览结构。 */

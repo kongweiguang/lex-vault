@@ -205,6 +205,29 @@ describe("app-chat-helpers", () => {
     expect(failed[0]?.toolCalls?.[0]?.status).toBe("error");
   });
 
+  it("reuses the failed assistant frame when late completion events arrive for the same turn", () => {
+    const startedMessages = upsertAssistantProcessDelta([], "turn_late_finish", "commentary", "先检查运行环境", {
+      itemId: "msg_late_1",
+    });
+    const failed = upsertAssistantFailure(
+      startedMessages,
+      "turn_late_finish",
+      "桌面端运行环境还没准备好，请稍后再试。",
+    );
+    const recovered = completeAssistantMessage(
+      appendAssistantDelta(failed, "turn_late_finish", "msg_late_final", "运行环境恢复后已经处理完成。"),
+      "turn_late_finish",
+      "msg_late_final",
+      "运行环境恢复后已经处理完成。",
+    );
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]?.role).toBe("error");
+    expect(recovered[0]?.content).toContain("运行环境恢复后已经处理完成。");
+    expect(recovered[0]?.content).not.toContain("当前回复未完成：桌面端运行环境还没准备好，请稍后再试。");
+    expect(recovered[0]?.processItems?.map((item: ChatProcessItem) => item.type)).toEqual(["text"]);
+  });
+
   it("prefers final_answer and keeps phase-missing agent messages inside the process area", () => {
     const record: CodexThreadRecord = {
       id: "thr_1",

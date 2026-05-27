@@ -39,7 +39,7 @@ pub fn append_trace(trace_key: &str, stage: &str, summary: impl AsRef<str>, payl
     }
 
     let line = json!({
-        "timestamp": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        "timestamp": chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, false),
         "traceKey": sanitized,
         "stage": stage,
         "summary": summary.as_ref(),

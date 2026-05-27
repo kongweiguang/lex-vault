@@ -13,6 +13,7 @@ type SettingsAccountSectionProps = {
   avatarText: string;
   packageLabel: string;
   quotaProgressItems: QuotaProgressItem[];
+  quotaAvailableAt: string;
   userPackageSummaryError: string;
   hasLoggedIn: boolean;
   isWechatLoginRunning: boolean;
@@ -30,6 +31,7 @@ export function SettingsAccountSection({
   avatarText,
   packageLabel,
   quotaProgressItems,
+  quotaAvailableAt,
   userPackageSummaryError,
   hasLoggedIn,
   isWechatLoginRunning,
@@ -96,6 +98,11 @@ export function SettingsAccountSection({
           <Gauge className="size-4" />
           额度统计
         </div>
+        {quotaAvailableAt ? (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            当前额度受限，预计 {quotaAvailableAt} 后恢复可用
+          </div>
+        ) : null}
         {quotaProgressItems.length > 0 ? (
           <div className="mt-3 space-y-4">
             {quotaProgressItems.map((item) => (
@@ -110,6 +117,7 @@ export function SettingsAccountSection({
                     style={{ width: `${item.percent}%` }}
                   />
                 </div>
+                <p className="text-xs text-slate-500">{item.refreshText}</p>
               </div>
             ))}
           </div>

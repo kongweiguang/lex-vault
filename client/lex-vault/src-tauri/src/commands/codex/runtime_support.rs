@@ -440,7 +440,7 @@ pub(crate) fn audit(codex_home: &Path, event_type: &str, payload: serde_json::Va
         return;
     }
     let line = json!({
-        "ts": chrono::Utc::now().to_rfc3339(),
+        "ts": chrono::Local::now().to_rfc3339(),
         "eventType": event_type,
         "payload": payload
     })

@@ -82,9 +82,9 @@ pub struct CalendarEventRecord {
     pub description: String,
     /// 事件类型。
     pub event_type: String,
-    /// 开始时间，使用 ISO-8601 UTC 字符串保存。
+    /// 开始时间，使用 ISO-8601 带本地时区偏移的字符串保存。
     pub start_at: String,
-    /// 结束时间，使用 ISO-8601 UTC 字符串保存。
+    /// 结束时间，使用 ISO-8601 带本地时区偏移的字符串保存。
     pub end_at: String,
     /// 是否为全天事项。
     pub all_day: bool,
@@ -771,7 +771,7 @@ pub(crate) fn complete_calendar_event(
 
 /// 查询未来 30 天日程，并按日期分组。
 pub(crate) fn list_calendar_agenda(database: &Path) -> Result<Vec<CalendarAgendaDay>, String> {
-    let now = Utc::now();
+    let now = Local::now();
     let end = now + Duration::days(30);
     let events = list_calendar_events(
         database,
@@ -1029,7 +1029,7 @@ pub(crate) fn preview_recurring_calendar_rule(
     validate_recurring_timezone(payload.timezone.as_deref().unwrap_or("Asia/Shanghai"))?;
     let from = match payload.from_at.as_deref() {
         Some(value) if !value.trim().is_empty() => parse_event_datetime(value)?,
-        _ => Utc::now(),
+        _ => Local::now().with_timezone(&Utc),
     };
     let limit = payload.limit.unwrap_or(5).clamp(1, 20);
     Ok(next_cron_occurrences(&schedule, from, limit)
@@ -1474,7 +1474,7 @@ fn load_recurring_deliveries(
 fn schedule_query_range(
     query: &ListCalendarEventsQuery,
 ) -> Result<(DateTime<Utc>, DateTime<Utc>), String> {
-    let now = Utc::now();
+    let now = Local::now().with_timezone(&Utc);
     let range_start = match query.start_at_from.as_deref() {
         Some(value) if !value.trim().is_empty() => parse_event_datetime(value)?,
         _ => now - Duration::days(DEFAULT_RECURRING_LOOKBACK_DAYS),
@@ -2503,7 +2503,7 @@ fn compute_due_flags(
 }
 
 fn now_rfc3339() -> String {
-    Utc::now().to_rfc3339()
+    Local::now().to_rfc3339()
 }
 
 fn non_blank_or_default(value: Option<String>, default: &str) -> String {

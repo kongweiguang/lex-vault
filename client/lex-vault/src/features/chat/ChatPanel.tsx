@@ -27,6 +27,7 @@ import {
   appendMessageToVisibleText,
   chatMessageToThreadMessage,
   latestAssistantIdAfterLatestUser,
+  withStreamingAssistantPlaceholder,
 } from "@/utils/chat-mappers";
 
 export function ChatPanel({
@@ -123,8 +124,9 @@ export function ChatPanel({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [isKnowledgeBaseOpen, setIsKnowledgeBaseOpen] = useState(false);
   const [visibleTransientNotice, setVisibleTransientNotice] = useState(transientNotice);
-  const latestAssistantId = latestAssistantIdAfterLatestUser(messages);
-  const scrollShortcutRefreshKey = `${messages.length}-${isStreaming}-${latestAssistantId ?? "none"}`;
+  const visibleMessages = withStreamingAssistantPlaceholder(messages, isStreaming);
+  const latestAssistantId = latestAssistantIdAfterLatestUser(visibleMessages);
+  const scrollShortcutRefreshKey = `${visibleMessages.length}-${isStreaming}-${latestAssistantId ?? "none"}`;
   const loadingHistoryTitle = messages.length ? "正在刷新历史记录" : "正在加载历史记录";
   const loadingHistoryDescription = messages.length
     ? "正在读取完整过程链路和最终结果，请稍等一下。"
@@ -179,7 +181,7 @@ export function ChatPanel({
   const runtime = useExternalStoreRuntime({
     isRunning: isStreaming,
     // 对话消息由业务状态维护，assistant-ui 负责交互语义、滚动和 part 渲染。
-    messages,
+    messages: visibleMessages,
     convertMessage,
     onCancel,
     onNew: handleNewMessage,
@@ -272,11 +274,11 @@ export function ChatPanel({
                 <EmptyChat
                   agentEnabled={agentEnabled}
                   contextAttachments={contextAttachments}
-                  hidden={isHydratingHistory && messages.length === 0}
+                  hidden={isHydratingHistory && visibleMessages.length === 0}
                   mode={mode}
                   onQuestionSelect={handleRecommendedQuestionSend}
                 />
-                <div className={cn("mx-auto w-full max-w-5xl", messages.length ? "py-2" : "")}>
+                <div className={cn("mx-auto w-full max-w-5xl", visibleMessages.length ? "py-2" : "")}>
                   <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
                 </div>
               </ThreadPrimitive.Viewport>

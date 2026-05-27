@@ -13,12 +13,7 @@ public enum QuotaWindowType {
     FIVE_HOUR,
 
     /**
-     * 7 天滚动窗口。
+     * 7 天固定周期窗口。
      */
-    WEEKLY,
-
-    /**
-     * 自然月窗口。
-     */
-    MONTHLY
+    WEEKLY
 }

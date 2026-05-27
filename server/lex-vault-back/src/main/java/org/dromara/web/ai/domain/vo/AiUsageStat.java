@@ -1,10 +1,13 @@
 package org.dromara.web.ai.domain.vo;
 
+import lombok.Data;
+
 /**
  * AI 上游 usage 解析结果。
  *
  * @author kongweiguang
  */
+@Data
 public class AiUsageStat {
 
     /**
@@ -22,27 +25,4 @@ public class AiUsageStat {
      */
     private Long totalTokens;
 
-    public Long getInputTokens() {
-        return inputTokens;
-    }
-
-    public void setInputTokens(Long inputTokens) {
-        this.inputTokens = inputTokens;
-    }
-
-    public Long getOutputTokens() {
-        return outputTokens;
-    }
-
-    public void setOutputTokens(Long outputTokens) {
-        this.outputTokens = outputTokens;
-    }
-
-    public Long getTotalTokens() {
-        return totalTokens;
-    }
-
-    public void setTotalTokens(Long totalTokens) {
-        this.totalTokens = totalTokens;
-    }
 }

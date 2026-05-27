@@ -5,7 +5,6 @@ export interface AiPackageVO extends BaseEntity {
   status: string;
   fiveHourTokenLimit: number;
   weeklyTokenLimit: number;
-  monthlyTokenLimit: number;
   remark: string;
 }
 
@@ -21,7 +20,6 @@ export interface AiPackageForm {
   packageName: string;
   fiveHourTokenLimit: number;
   weeklyTokenLimit: number;
-  monthlyTokenLimit: number;
   remark?: string;
 }
 
@@ -38,7 +36,7 @@ export interface AiPackageUpstreamVO extends BaseEntity {
   baseUrl: string;
   apiKey?: string;
   model: string;
-  reasoningJson?: string;
+  extraParamsJson?: string;
   weight: number;
   priority: number;
   status: string;
@@ -58,7 +56,7 @@ export interface AiPackageUpstreamForm {
   baseUrl: string;
   apiKey?: string;
   model: string;
-  reasoningJson?: string;
+  extraParamsJson?: string;
   weight: number;
   priority: number;
   remark?: string;

@@ -376,7 +376,7 @@ pub(crate) fn build_case_graphify_index(
         let wiki_entry = detect_graphify_wiki_entry(&final_index_root)?;
         let indexed_file_count = count_index_documents(&final_index_root)?;
         let metadata = GraphifyIndexMetadata {
-            built_at: chrono::Utc::now().to_rfc3339(),
+            built_at: chrono::Local::now().to_rfc3339(),
             source_latest_modified_ms: snapshot.latest_modified_ms,
             source_file_count: snapshot.file_count,
             indexed_file_count,
@@ -1070,7 +1070,7 @@ fn build_fallback_case_index(output_root: &Path, case_path: &Path) -> Result<(),
         "> 当前索引采用文本优先的本地构建策略：可直接读取的文本材料会纳入检索，其他材料先保留路径与元数据供后续继续定位。".to_string(),
         "".to_string(),
         format!("- 案件目录：`{}`", case_path.display()),
-        format!("- 构建时间：`{}`", chrono::Utc::now().to_rfc3339()),
+        format!("- 构建时间：`{}`", chrono::Local::now().to_rfc3339()),
         "".to_string(),
         "## 材料目录".to_string(),
         "".to_string(),

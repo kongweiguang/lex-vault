@@ -2,6 +2,7 @@ package org.dromara.web.ai.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
 
 import java.time.LocalDateTime;
 
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
  *
  * @author kongweiguang
  */
+@Data
 @TableName("ai_usage_record")
 public class AiUsageRecord {
 
@@ -89,123 +91,4 @@ public class AiUsageRecord {
      */
     private LocalDateTime updateTime;
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getRequestId() {
-        return requestId;
-    }
-
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
-    }
-
-    public Long getUserId() {
-        return userId;
-    }
-
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
-
-    public Long getPackageId() {
-        return packageId;
-    }
-
-    public void setPackageId(Long packageId) {
-        this.packageId = packageId;
-    }
-
-    public Long getUpstreamId() {
-        return upstreamId;
-    }
-
-    public void setUpstreamId(Long upstreamId) {
-        this.upstreamId = upstreamId;
-    }
-
-    public Boolean getStreaming() {
-        return streaming;
-    }
-
-    public void setStreaming(Boolean streaming) {
-        this.streaming = streaming;
-    }
-
-    public Long getInputTokens() {
-        return inputTokens;
-    }
-
-    public void setInputTokens(Long inputTokens) {
-        this.inputTokens = inputTokens;
-    }
-
-    public Long getOutputTokens() {
-        return outputTokens;
-    }
-
-    public void setOutputTokens(Long outputTokens) {
-        this.outputTokens = outputTokens;
-    }
-
-    public Long getTotalTokens() {
-        return totalTokens;
-    }
-
-    public void setTotalTokens(Long totalTokens) {
-        this.totalTokens = totalTokens;
-    }
-
-    public String getUsageSource() {
-        return usageSource;
-    }
-
-    public void setUsageSource(String usageSource) {
-        this.usageSource = usageSource;
-    }
-
-    public String getRequestStatus() {
-        return requestStatus;
-    }
-
-    public void setRequestStatus(String requestStatus) {
-        this.requestStatus = requestStatus;
-    }
-
-    public String getRejectReason() {
-        return rejectReason;
-    }
-
-    public void setRejectReason(String rejectReason) {
-        this.rejectReason = rejectReason;
-    }
-
-    public LocalDateTime getOccurredAt() {
-        return occurredAt;
-    }
-
-    public void setOccurredAt(LocalDateTime occurredAt) {
-        this.occurredAt = occurredAt;
-    }
-
-    public LocalDateTime getCreateTime() {
-        return createTime;
-    }
-
-    public void setCreateTime(LocalDateTime createTime) {
-        this.createTime = createTime;
-    }
-
-    public LocalDateTime getUpdateTime() {
-        return updateTime;
-    }
-
-    public void setUpdateTime(LocalDateTime updateTime) {
-        this.updateTime = updateTime;
-    }
 }

@@ -13,6 +13,7 @@ import org.dromara.web.ai.domain.vo.AiPackageOptionVo;
 import org.dromara.web.ai.domain.vo.AiUsageRecordVo;
 import org.dromara.web.ai.domain.vo.AiUsageSnapshot;
 import org.dromara.web.ai.domain.vo.AiUsageSummaryVo;
+import org.dromara.web.ai.domain.vo.AiUsageTotalVo;
 import org.dromara.web.ai.domain.vo.AiUserPackageBindingVo;
 
 import java.time.LocalDateTime;
@@ -137,6 +138,14 @@ public interface IAiAdminService {
      * @return 分页结果
      */
     AiPageResult<AiUsageRecordVo> listUsageRecords(AiUsageQuery query);
+
+    /**
+     * 按查询条件汇总用量总计。
+     *
+     * @param query 查询条件
+     * @return 汇总结果
+     */
+    AiUsageTotalVo getUsageTotals(AiUsageQuery query);
 
     /**
      * 按查询条件查询用户当前用量汇总。

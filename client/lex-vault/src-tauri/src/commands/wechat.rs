@@ -116,7 +116,7 @@ pub struct WechatLoginStatus {
     /// 微信 SDK 返回的账号 ID。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_id: Option<String>,
-    /// 状态更新时间，UTC RFC3339。
+    /// 状态更新时间，本地 RFC3339。
     pub updated_at: String,
 }
 
@@ -288,7 +288,7 @@ struct WechatThreadMapping {
     /// 是否来自群聊。
     #[serde(default)]
     is_room: bool,
-    /// 更新时间，UTC RFC3339。
+    /// 更新时间，本地 RFC3339。
     updated_at: String,
 }
 
@@ -1958,7 +1958,7 @@ fn contains_any_text_ignore_case(text: &str, patterns: &[&str]) -> bool {
 
 /// 当前时间戳。
 fn current_timestamp() -> String {
-    chrono::Utc::now().to_rfc3339()
+    chrono::Local::now().to_rfc3339()
 }
 
 /// 快速构造状态。

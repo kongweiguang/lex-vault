@@ -2,7 +2,7 @@
 //!
 //! @author kongweiguang
 
-use chrono::{NaiveDate, SecondsFormat, Utc};
+use chrono::{Local, NaiveDate, SecondsFormat};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -311,7 +311,7 @@ pub(crate) fn upsert_billing_case_setting(
         payload.default_hourly_rate.unwrap_or_default(),
         "案件默认小时费率",
     )?;
-    let updated_at = now_utc_string();
+    let updated_at = now_local_string();
 
     connection
         .execute(
@@ -373,7 +373,7 @@ pub(crate) fn create_billing_time_entry(
     let hourly_rate =
         resolve_time_entry_hourly_rate(&connection, &case_id, payload.hourly_rate, None, false)?;
     let amount = resolve_time_entry_amount(duration_minutes, hourly_rate, billable);
-    let now = now_utc_string();
+    let now = now_local_string();
     let entry_id = Uuid::new_v4().to_string();
 
     connection
@@ -454,7 +454,7 @@ pub(crate) fn update_billing_time_entry(
         case_changed,
     )?;
     let amount = resolve_time_entry_amount(duration_minutes, hourly_rate, billable);
-    let updated_at = now_utc_string();
+    let updated_at = now_local_string();
 
     connection
         .execute(
@@ -525,7 +525,7 @@ pub(crate) fn create_billing_expense_entry(
     let category = normalize_required_text(&payload.category, "费用分类")?;
     let amount = normalize_non_negative_money(payload.amount, "费用金额")?;
     let note = payload.note.unwrap_or_default().trim().to_string();
-    let now = now_utc_string();
+    let now = now_local_string();
     let entry_id = Uuid::new_v4().to_string();
 
     connection
@@ -593,7 +593,7 @@ pub(crate) fn update_billing_expense_entry(
         .unwrap_or(&current.note)
         .trim()
         .to_string();
-    let updated_at = now_utc_string();
+    let updated_at = now_local_string();
 
     connection
         .execute(
@@ -1013,8 +1013,8 @@ fn round_money(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
 }
 
-fn now_utc_string() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+fn now_local_string() -> String {
+    Local::now().to_rfc3339_opts(SecondsFormat::Secs, false)
 }
 
 fn coalesce_snapshot_name(current: &str, incoming: &str, case_id: &str) -> String {

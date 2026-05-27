@@ -2,12 +2,14 @@ package org.dromara.web.ai.domain.form;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import lombok.Data;
 
 /**
  * AI 通用状态修改表单。
  *
  * @author kongweiguang
  */
+@Data
 public class AiStatusChangeForm {
 
     /**
@@ -22,19 +24,4 @@ public class AiStatusChangeForm {
     @NotBlank(message = "状态不能为空")
     private String status;
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
 }

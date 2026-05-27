@@ -14,6 +14,7 @@ import org.dromara.web.ai.consts.Prompt;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -69,10 +70,7 @@ public final class AiGatewaySupport {
             return quotaDenied(QuotaWindowType.FIVE_HOUR, "用户已达到最近 5 小时 token 限额");
         }
         if (snapshot.getWeeklyUsedTokens() >= aiPackage.getWeeklyTokenLimit()) {
-            return quotaDenied(QuotaWindowType.WEEKLY, "用户已达到最近 7 天 token 限额");
-        }
-        if (snapshot.getMonthlyUsedTokens() >= aiPackage.getMonthlyTokenLimit()) {
-            return quotaDenied(QuotaWindowType.MONTHLY, "用户已达到当前自然月 token 限额");
+            return quotaDenied(QuotaWindowType.WEEKLY, "用户已达到当前 7 天套餐周期 token 限额");
         }
         QuotaCheckResult result = new QuotaCheckResult();
         result.setAllowed(true);
@@ -91,8 +89,8 @@ public final class AiGatewaySupport {
             JsonNode jsonNode = Json.node(body);
             if (jsonNode instanceof ObjectNode objectNode) {
                 objectNode.put("model", upstream.getModel());
-                if (StringUtils.isNotBlank(upstream.getReasoningJson())) {
-                    objectNode.set("reasoning", Json.node(upstream.getReasoningJson()));
+                if (StringUtils.isNotBlank(upstream.getExtraParamsJson())) {
+                    mergeUpstreamExtraParams(objectNode, Json.node(upstream.getExtraParamsJson()));
                 }
                 objectNode.put("instructions", Prompt.prompt);
                 return Json.str(objectNode);
@@ -101,6 +99,20 @@ public final class AiGatewaySupport {
             // 这里保留原始 body，让上游继续按原协议返回校验结果。
         }
         return body;
+    }
+
+    /**
+     * 将上游节点配置的扩展请求参数合并到请求体顶层，兼容不同模型厂商的私有参数。
+     */
+    private static void mergeUpstreamExtraParams(ObjectNode objectNode, JsonNode extraParamsNode) {
+        if (!(extraParamsNode instanceof ObjectNode extraParamsObject)) {
+            return;
+        }
+        Iterator<Map.Entry<String, JsonNode>> fields = extraParamsObject.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> field = fields.next();
+            objectNode.set(field.getKey(), field.getValue());
+        }
     }
 
     /**
@@ -171,6 +183,21 @@ public final class AiGatewaySupport {
             JsonNode root = Json.node(dataJson);
             String type = root.path("type").asText("");
             if (!"response.completed".equals(type)) {
+                AiUsageStat usage = extractUsage(root);
+                if (usage != null) {
+                    return usage;
+                }
+                JsonNode message = root.path("message");
+                if (!message.isMissingNode() && !message.isNull()) {
+                    usage = extractUsage(message);
+                    if (usage != null) {
+                        return usage;
+                    }
+                }
+                JsonNode delta = root.path("delta");
+                if (!delta.isMissingNode() && !delta.isNull()) {
+                    return extractUsage(delta);
+                }
                 return null;
             }
             JsonNode response = root.path("response");
@@ -214,7 +241,6 @@ public final class AiGatewaySupport {
         result.setErrorCode((switch (windowType) {
             case FIVE_HOUR -> "five_hour_quota_exceeded";
             case WEEKLY -> "weekly_quota_exceeded";
-            case MONTHLY -> "monthly_quota_exceeded";
         }).toLowerCase(Locale.ROOT));
         return result;
     }

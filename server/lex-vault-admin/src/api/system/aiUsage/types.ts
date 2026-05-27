@@ -32,10 +32,25 @@ export interface AiUsageSummaryVO {
   packageId: string | number;
   packageCode: string;
   packageName: string;
+  packageEffectiveFrom?: string;
+  packageEffectiveTo?: string;
   fiveHourUsedTokens: number;
   fiveHourTokenLimit: number;
   weeklyUsedTokens: number;
   weeklyTokenLimit: number;
-  monthlyUsedTokens: number;
-  monthlyTokenLimit: number;
+  fiveHourQuotaPercent?: number;
+  fiveHourQuotaAvailableAt?: string;
+  fiveHourNextRefreshAt?: string;
+  weeklyQuotaPercent?: number;
+  weeklyQuotaAvailableAt?: string;
+  weeklyNextRefreshAt?: string;
+  quotaAvailableAt?: string;
+}
+
+export interface AiUsageTotalVO {
+  requestCount: number;
+  successCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
 }

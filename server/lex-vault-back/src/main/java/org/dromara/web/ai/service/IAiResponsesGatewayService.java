@@ -2,6 +2,7 @@ package org.dromara.web.ai.service;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.dromara.web.ai.domain.form.AiMultimodalUnderstandingForm;
 
 /**
  * OpenAI Responses 网关服务接口。
@@ -36,4 +37,13 @@ public interface IAiResponsesGatewayService {
      * @param response 原始响应
      */
     void anthropicMessages(String body, HttpServletRequest request, HttpServletResponse response);
+
+    /**
+     * 处理多模态理解网关请求。
+     *
+     * @param form     多模态理解请求
+     * @param request  原始请求
+     * @param response 原始响应
+     */
+    void multimodalUnderstanding(AiMultimodalUnderstandingForm form, HttpServletRequest request, HttpServletResponse response);
 }

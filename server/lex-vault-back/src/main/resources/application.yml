@@ -269,6 +269,15 @@ ai:
       default-model: MiniMax-M2.7
       api-key: sk-cp-ot6hMt65zIx8rHYFzcmGxEYERsMXJ3Nj6OOqH2r3Plp9KsuTwu8zY30cL024Oud8Ge5iAQfEX8dngBxdbmiasy8DWPNl6axRjGqr1unJPwkq6pibDYBAXAc
       version: 2023-06-01
+    # 多模态理解固定上游，默认接入 Xiaomi MiMo Token Plan OpenAI Chat Completions 兼容入口
+    multimodal-understanding:
+      base-url: https://token-plan-cn.xiaomimimo.com/v1/chat/completions
+      default-model: mimo-v2.5
+      api-key: tp-cwbe6ed2df52nrcvvmp3e4365jpclhy1ux4h0vacon58mokk
+      max-completion-tokens: 1024
+      system-prompt: 你是多模态内容理解助手，请基于输入的图片、音频或视频事实用中文回答。
+      default-video-fps: 2
+      default-media-resolution: default
 
 --- # websocket
 websocket:

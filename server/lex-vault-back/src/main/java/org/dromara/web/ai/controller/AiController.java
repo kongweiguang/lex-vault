@@ -2,7 +2,9 @@ package org.dromara.web.ai.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.dromara.web.ai.domain.form.AiMultimodalUnderstandingForm;
 import org.dromara.web.ai.service.IAiResponsesGatewayService;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -41,5 +43,13 @@ public class AiController {
     @PostMapping(value = "/anthropic/v1/messages", consumes = MediaType.APPLICATION_JSON_VALUE)
     public void anthropicMessages(@RequestBody String body, HttpServletRequest request, HttpServletResponse response) {
         aiResponsesGatewayService.anthropicMessages(body, request, response);
+    }
+
+    /**
+     * 多模态理解代理入口。
+     */
+    @PostMapping(value = "/v1/multimodal/understandings", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public void multimodalUnderstanding(@Valid @RequestBody AiMultimodalUnderstandingForm form, HttpServletRequest request, HttpServletResponse response) {
+        aiResponsesGatewayService.multimodalUnderstanding(form, request, response);
     }
 }

@@ -12,6 +12,7 @@ mod jsonrpc;
 mod knowledge_runtime;
 mod local_mcp_server;
 mod logging;
+mod multimodal_understanding_runtime;
 mod notification_center;
 mod runtime_bundle;
 mod tray;

@@ -2,6 +2,7 @@ package org.dromara.web.ai.config;
 
 import lombok.Data;
 import org.dromara.web.ai.config.model.AiGatewayFixedUpstreamProperties;
+import org.dromara.web.ai.config.model.AiGatewayMultimodalUnderstandingProperties;
 import org.dromara.web.ai.config.model.AiGatewayTimeoutProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -47,4 +48,9 @@ public class AiGatewayProperties {
      * Anthropic Messages 固定兼容上游配置。
      */
     private AiGatewayFixedUpstreamProperties anthropicMessages = new AiGatewayFixedUpstreamProperties();
+
+    /**
+     * 多模态理解固定上游配置。
+     */
+    private AiGatewayMultimodalUnderstandingProperties multimodalUnderstanding = new AiGatewayMultimodalUnderstandingProperties();
 }

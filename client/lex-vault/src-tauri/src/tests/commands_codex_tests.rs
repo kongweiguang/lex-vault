@@ -46,6 +46,8 @@ fn workspace_directory_developer_instructions_use_app_config_paths() {
     assert!(instructions.contains("LEX_VAULT_TOOLS_DIR"));
     assert!(instructions.contains("https://pypi.tuna.tsinghua.edu.cn/simple"));
     assert!(instructions.contains("https://registry.npmmirror.com"));
+    assert!(instructions.contains("默认优先使用 lex_vault_local 提供的 multimodal_understand 工具"));
+    assert!(instructions.contains("必须通过 prompt 明确本次需要解析的重点"));
     assert!(instructions.contains("默认优先使用 lex_vault_local 提供的 web_search 工具"));
     assert!(instructions.contains("默认优先使用 lex_vault_local 提供的 wechat_search 工具"));
     assert!(instructions.contains("当前运行时已通过顶层配置关闭模型或 provider 自带的 web search"));

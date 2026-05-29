@@ -4,17 +4,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.kongweiguang.v1.json.Json;
 import org.dromara.common.core.utils.StringUtils;
+import org.dromara.web.ai.config.model.AiGatewayMultimodalUnderstandingProperties;
+import org.dromara.web.ai.consts.Prompt;
 import org.dromara.web.ai.domain.entity.AiPackage;
 import org.dromara.web.ai.domain.entity.AiPackageUpstream;
+import org.dromara.web.ai.domain.form.AiMultimodalUnderstandingForm;
+import org.dromara.web.ai.domain.vo.AiMultimodalUnderstandingVo;
 import org.dromara.web.ai.domain.vo.AiUsageSnapshot;
 import org.dromara.web.ai.domain.vo.AiUsageStat;
 import org.dromara.web.ai.domain.vo.QuotaCheckResult;
 import org.dromara.web.ai.enums.QuotaWindowType;
-import org.dromara.web.ai.consts.Prompt;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,6 +31,16 @@ import java.util.stream.Collectors;
  * @author kongweiguang
  */
 public final class AiGatewaySupport {
+
+    /**
+     * 默认多模态理解系统提示词。
+     */
+    private static final String DEFAULT_MULTIMODAL_UNDERSTANDING_SYSTEM_PROMPT = "你是多模态内容理解助手，请基于输入的图片、音频或视频事实用中文回答。";
+
+    /**
+     * 默认多模态理解最大输出 token。
+     */
+    private static final int DEFAULT_MULTIMODAL_UNDERSTANDING_MAX_COMPLETION_TOKENS = 1024;
 
     private AiGatewaySupport() {
     }
@@ -158,6 +172,80 @@ public final class AiGatewaySupport {
     }
 
     /**
+     * 构造多模态理解上游 Chat Completions 请求体。
+     *
+     * @param form     多模态理解请求
+     * @param upstream 多模态理解固定上游配置
+     * @return OpenAI Chat Completions 多模态理解请求体
+     */
+    public static String buildMultimodalUnderstandingChatCompletionsBody(AiMultimodalUnderstandingForm form,
+                                                                         AiGatewayMultimodalUnderstandingProperties upstream) {
+        String systemPrompt = StringUtils.isNotBlank(upstream.getSystemPrompt())
+            ? upstream.getSystemPrompt()
+            : DEFAULT_MULTIMODAL_UNDERSTANDING_SYSTEM_PROMPT;
+        if (StringUtils.isBlank(form.getPrompt())) {
+            throw new IllegalArgumentException("多模态解析重点不能为空");
+        }
+        String userPrompt = form.getPrompt().trim();
+        Integer maxCompletionTokens = form.getMaxCompletionTokens() != null && form.getMaxCompletionTokens() > 0
+            ? form.getMaxCompletionTokens()
+            : defaultMaxCompletionTokens(upstream.getMaxCompletionTokens());
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", upstream.getDefaultModel());
+        body.put("messages", List.of(
+            Map.of(
+                "role", "system",
+                "content", systemPrompt
+            ),
+            Map.of(
+                "role", "user",
+                "content", List.of(
+                    multimodalContentBlock(form, upstream),
+                    Map.of(
+                        "type", "text",
+                        "text", userPrompt
+                    )
+                )
+            )
+        ));
+        body.put("max_completion_tokens", maxCompletionTokens);
+        return Json.str(body);
+    }
+
+    /**
+     * 从 OpenAI Chat Completions 多模态理解响应中提取稳定业务结果。
+     *
+     * @param body      响应 JSON
+     * @param mediaKind 媒体类型
+     * @return 多模态理解结果
+     */
+    public static AiMultimodalUnderstandingVo parseMultimodalUnderstandingResult(String body, String mediaKind) {
+        try {
+            JsonNode root = Json.node(body);
+            JsonNode firstChoice = root.path("choices").path(0);
+            JsonNode message = firstChoice.path("message");
+            String content = StringUtils.isNotBlank(message.path("content").asText(""))
+                ? message.path("content").asText("")
+                : message.path("reasoning_content").asText("");
+            AiMultimodalUnderstandingVo result = new AiMultimodalUnderstandingVo();
+            result.setText(content);
+            result.setModel(root.path("model").asText(""));
+            result.setMediaKind(mediaKind);
+            result.setFinishReason(firstChoice.path("finish_reason").asText(null));
+            result.setUsage(extractUsage(root));
+            return result;
+        } catch (Exception ignored) {
+            AiMultimodalUnderstandingVo result = new AiMultimodalUnderstandingVo();
+            result.setText("");
+            result.setModel("");
+            result.setMediaKind(mediaKind);
+            result.setUsage(null);
+            return result;
+        }
+    }
+
+    /**
      * 从完整 JSON 响应中提取 usage。
      *
      * @param body 响应 JSON
@@ -264,5 +352,69 @@ public final class AiGatewaySupport {
     private static long numberOrZero(JsonNode node, String fieldName) {
         JsonNode valueNode = node.path(fieldName);
         return valueNode.isNumber() ? valueNode.asLong() : 0L;
+    }
+
+    private static Map<String, Object> multimodalContentBlock(AiMultimodalUnderstandingForm form,
+                                                              AiGatewayMultimodalUnderstandingProperties upstream) {
+        String dataUrl = dataUrl(form.getMedia());
+        String kind = form.getMedia().getKind().trim().toLowerCase(Locale.ROOT);
+        return switch (kind) {
+            case "image" -> Map.of(
+                "type", "image_url",
+                "image_url", Map.of("url", dataUrl)
+            );
+            case "audio" -> Map.of(
+                "type", "input_audio",
+                "input_audio", Map.of("data", dataUrl)
+            );
+            case "video" -> videoContentBlock(dataUrl, form, upstream);
+            default -> throw new IllegalArgumentException("不支持的多模态媒体类型：" + form.getMedia().getKind());
+        };
+    }
+
+    private static Map<String, Object> videoContentBlock(String dataUrl,
+                                                         AiMultimodalUnderstandingForm form,
+                                                         AiGatewayMultimodalUnderstandingProperties upstream) {
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("type", "video_url");
+        block.put("video_url", Map.of("url", dataUrl));
+        block.put("fps", defaultVideoFps(form.getFps(), upstream.getDefaultVideoFps()));
+        block.put("media_resolution", defaultMediaResolution(form.getMediaResolution(), upstream.getDefaultMediaResolution()));
+        return block;
+    }
+
+    private static String dataUrl(AiMultimodalUnderstandingForm.MediaPayload media) {
+        return "data:%s;base64,%s".formatted(media.getMimeType(), media.getDataBase64());
+    }
+
+    private static int defaultMaxCompletionTokens(Integer value) {
+        return value == null || value <= 0 ? DEFAULT_MULTIMODAL_UNDERSTANDING_MAX_COMPLETION_TOKENS : value;
+    }
+
+    private static double defaultVideoFps(Double value, Double configuredValue) {
+        if (value != null && value >= 0.1D && value <= 10D) {
+            return value;
+        }
+        if (configuredValue != null && configuredValue >= 0.1D && configuredValue <= 10D) {
+            return configuredValue;
+        }
+        return 2D;
+    }
+
+    private static String defaultMediaResolution(String value, String configuredValue) {
+        String normalizedValue = normalizeMediaResolution(value);
+        if (StringUtils.isNotBlank(normalizedValue)) {
+            return normalizedValue;
+        }
+        String normalizedConfiguredValue = normalizeMediaResolution(configuredValue);
+        return StringUtils.isNotBlank(normalizedConfiguredValue) ? normalizedConfiguredValue : "default";
+    }
+
+    private static String normalizeMediaResolution(String value) {
+        if (StringUtils.isBlank(value)) {
+            return "";
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        return "max".equals(normalized) ? "max" : "default";
     }
 }

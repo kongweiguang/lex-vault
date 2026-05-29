@@ -13,11 +13,14 @@ import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.web.ai.config.AiGatewayProperties;
 import org.dromara.web.ai.config.model.AiGatewayFixedUpstreamProperties;
+import org.dromara.web.ai.config.model.AiGatewayMultimodalUnderstandingProperties;
 import org.dromara.web.ai.config.model.AiGatewayTimeoutProperties;
 import org.dromara.web.ai.domain.entity.AiPackage;
 import org.dromara.web.ai.domain.entity.AiPackageUpstream;
 import org.dromara.web.ai.domain.entity.AiUsageRecord;
 import org.dromara.web.ai.domain.entity.AiUserPackageBinding;
+import org.dromara.web.ai.domain.form.AiMultimodalUnderstandingForm;
+import org.dromara.web.ai.domain.vo.AiMultimodalUnderstandingVo;
 import org.dromara.web.ai.domain.vo.AiUsageSnapshot;
 import org.dromara.web.ai.domain.vo.AiUsageStat;
 import org.dromara.web.ai.domain.vo.openai.OpenAiErrorBody;
@@ -101,6 +104,24 @@ public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService
     @Override
     public void anthropicMessages(String body, HttpServletRequest request, HttpServletResponse response) {
         proxyFixedGateway(body, request, response, anthropicMessagesStrategy());
+    }
+
+    @Override
+    public void multimodalUnderstanding(AiMultimodalUnderstandingForm form, HttpServletRequest request, HttpServletResponse response) {
+        Long userId = requireLoginUserId();
+        GatewayRequestContext context = prepareGatewayRequest("{}", response, userId);
+        if (context == null) {
+            return;
+        }
+        try {
+            AiGatewayMultimodalUnderstandingProperties upstream = requireMultimodalUnderstandingUpstream();
+            String rewrittenBody = AiGatewaySupport.buildMultimodalUnderstandingChatCompletionsBody(form, upstream);
+            Request upstreamRequest = buildMultimodalUnderstandingRequest(upstream, rewrittenBody);
+            proxyMultimodalUnderstandingResponse(upstreamRequest, response, context, form.getMedia().getKind());
+        } catch (IOException e) {
+            saveFailureRecord(context.requestId(), userId, context.aiPackage().getId(), null, false, "multimodal_understanding_network_failure", e.getMessage());
+            throw new ServiceException("多模态理解上游网络请求失败：{}", e.getMessage());
+        }
     }
 
     private void proxyFixedGateway(String body,
@@ -320,6 +341,37 @@ public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService
         response.flushBuffer();
     }
 
+    private void proxyMultimodalUnderstandingResponse(Request upstreamRequest,
+                                                      HttpServletResponse response,
+                                                      GatewayRequestContext context,
+                                                      String mediaKind) throws IOException {
+        try (Response upstreamResponse = httpClient.newCall(upstreamRequest).execute()) {
+            response.setStatus(upstreamResponse.code());
+            ResponseBody responseBody = upstreamResponse.body();
+            if (responseBody == null) {
+                saveIncompleteRecord(context.requestId(), context.userId(), context.aiPackage().getId(), null, false, "empty_response_body");
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.flushBuffer();
+                return;
+            }
+            if (!upstreamResponse.isSuccessful()) {
+                proxyFailedResponse(responseBody, response, context, null, "multimodal_understanding_http_" + upstreamResponse.code());
+                return;
+            }
+
+            String responseText = responseBody.string();
+            AiMultimodalUnderstandingVo result = AiGatewaySupport.parseMultimodalUnderstandingResult(responseText, mediaKind);
+            if (result.getUsage() != null) {
+                saveSuccessRecord(context.requestId(), context.userId(), context.aiPackage().getId(), null, false, result.getUsage());
+            } else {
+                saveIncompleteRecord(context.requestId(), context.userId(), context.aiPackage().getId(), null, false, "upstream_usage_missing");
+            }
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.getOutputStream().write(Json.str(result).getBytes(StandardCharsets.UTF_8));
+            response.flushBuffer();
+        }
+    }
+
     private Request buildUpstreamRequest(AiPackageUpstream upstream, String body, HttpServletRequest request) {
         Request.Builder builder = new Request.Builder()
             .url(upstream.getBaseUrl())
@@ -360,6 +412,15 @@ public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService
         copyRequestHeader(request, builder, HttpHeaders.ACCEPT);
         copyRequestHeader(request, builder, "anthropic-beta");
         return builder.build();
+    }
+
+    private Request buildMultimodalUnderstandingRequest(AiGatewayMultimodalUnderstandingProperties upstream, String body) {
+        return new Request.Builder()
+            .url(upstream.getBaseUrl())
+            .post(RequestBody.create(JSON_MEDIA_TYPE, body))
+            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .header("api-key", upstream.getApiKey())
+            .build();
     }
 
     private void copyResponseHeaders(Response upstreamResponse, HttpServletResponse response) {
@@ -410,6 +471,17 @@ public class AiResponsesGatewayServiceImpl implements IAiResponsesGatewayService
             || StringUtils.isBlank(upstream.getDefaultModel())
             || StringUtils.isBlank(upstream.getApiKey())) {
             throw new ServiceException("AI 网关固定上游配置缺失：{}", configName);
+        }
+        return upstream;
+    }
+
+    private AiGatewayMultimodalUnderstandingProperties requireMultimodalUnderstandingUpstream() {
+        AiGatewayMultimodalUnderstandingProperties upstream = aiGatewayProperties.getMultimodalUnderstanding();
+        if (upstream == null
+            || StringUtils.isBlank(upstream.getBaseUrl())
+            || StringUtils.isBlank(upstream.getDefaultModel())
+            || StringUtils.isBlank(upstream.getApiKey())) {
+            throw new ServiceException("AI 网关固定上游配置缺失：multimodal-understanding");
         }
         return upstream;
     }

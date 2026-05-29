@@ -485,6 +485,7 @@ pub(crate) fn build_workspace_directory_developer_instructions(
             "当用户提到模板、法规、案例、案件目录或相关文件时，请优先结合以上目录语义理解，不要把这些内置目录名当作无意义路径片段。",
             "当用户要求基于案件材料梳理事实、证据、时间线、争议焦点、证明目的或材料检索时，优先使用 lex_vault_local 提供的 case_graphify_status / case_graphify_build / case_graphify_search / case_graphify_read 工具读取案件知识库索引。",
             "如果当前案件还没有 graphify 索引，或索引已经过期，请先构建索引再回答，不要默认逐个硬读大文件；优先使用 graphify-extract 模式结果，只有在 indexMode 显示 fallback-local-text 时才把它视为保底索引。",
+            "当用户需要理解本机图片、截图、扫描件、照片、音频或视频内容，且已经给出本机媒体绝对路径时，默认优先使用 lex_vault_local 提供的 multimodal_understand 工具；调用时必须通过 prompt 明确本次需要解析的重点；不要用文本文件读取方式硬读媒体二进制内容。",
             "当用户需要联网搜索公开网页信息时，默认优先使用 lex_vault_local 提供的 web_search 工具；当用户明确要搜微信公众号文章、微信公开内容或搜狗微信结果时，默认优先使用 lex_vault_local 提供的 wechat_search 工具；当前运行时已通过顶层配置关闭模型或 provider 自带的 web search。",
             "如果本地 web_search 或 wechat_search 当前不可用、报错或超时，应先说明本地网页检索链路异常，再决定是否重试；不要静默切换到其他内置 web search。",
         ]

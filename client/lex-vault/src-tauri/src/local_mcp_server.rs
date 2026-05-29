@@ -35,6 +35,9 @@ use crate::knowledge_runtime::{
     build_case_graphify_index, case_graphify_status, read_case_graphify_index,
     search_case_graphify_index,
 };
+use crate::multimodal_understanding_runtime::{
+    run_multimodal_understanding, MultimodalUnderstandingRequest,
+};
 use crate::websearch_runtime::{
     run_web_search, WebSearchRequest, DEFAULT_WEB_SEARCH_ENGINE, DEFAULT_WEB_SEARCH_LIMIT,
     DEFAULT_WEB_SEARCH_TIMEOUT_MS, WECHAT_SEARCH_ENGINE,
@@ -462,6 +465,22 @@ struct WechatSearchArgs {
     /// 是否继续访问前几条公众号文章页，提取页面摘要。默认 false。
     #[serde(default)]
     include_page_summary: bool,
+}
+
+/// 多模态理解工具参数。
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct MultimodalUnderstandArgs {
+    /// 本机图片、音频或视频绝对路径。
+    path: String,
+    /// 需要解析的重点提示词，例如提取文字、总结音频要点、梳理视频时间线或识别票据字段。
+    prompt: String,
+    /// 最大输出 token。可省略，省略时使用服务端 YAML 默认值。
+    max_completion_tokens: Option<u32>,
+    /// 视频抽帧帧率，仅视频有效。小米支持 0.1 到 10。
+    fps: Option<f32>,
+    /// 视频解析分辨率档位，仅视频有效，支持 default 和 max。
+    media_resolution: Option<String>,
 }
 
 /// MCP 工具中的提醒规则参数。
@@ -1149,12 +1168,32 @@ impl LocalMcpServer {
         .map_err(|err| self.internal_error("执行微信文章检索失败", err.message))?;
         self.to_tool_text(result)
     }
+
+    /// 理解本机图片、音频或视频文件内容，适用于用户要求分析多模态媒体内容。
+    #[tool(
+        name = "multimodal_understand",
+        description = "理解本机图片、音频或视频文件内容。仅接收本机媒体绝对路径；支持图片 png、jpg、jpeg、webp、gif、bmp，音频 mp3、wav、flac、m4a、ogg，视频 mp4、mov、avi、wmv。prompt 必填，用于说明需要解析的重点；视频可选 fps 与 mediaResolution(default|max)。"
+    )]
+    fn multimodal_understand(
+        &self,
+        Parameters(args): Parameters<MultimodalUnderstandArgs>,
+    ) -> Result<String, ErrorData> {
+        let result = run_multimodal_understanding(MultimodalUnderstandingRequest {
+            path: PathBuf::from(args.path),
+            prompt: args.prompt,
+            max_completion_tokens: args.max_completion_tokens,
+            fps: args.fps,
+            media_resolution: args.media_resolution,
+        })
+        .map_err(|err| self.internal_error("执行多模态理解失败", err.message))?;
+        self.to_tool_text(result)
+    }
 }
 
 #[tool_handler(
     name = "lex_vault_local",
-    version = "0.1.3",
-    instructions = "用于访问 Lex Vault 当前工作空间中的本地能力；提供律师日历事项查询、创建、改期、取消、完成，以及周期日程规则预览和创建工具，也提供案件 graphify 知识库索引的状态查询、构建、检索和读取工具。当前还提供基于内置 helper 的 web_search 与 wechat_search 工具，分别用于公开网页检索和微信公众号公开文章检索。一次性提醒创建普通日历事项，重复提醒创建周期日程规则；分析案件材料时优先使用 graphify 工具读取材料索引，并先检查当前索引模式是否为 graphify-extract 还是 fallback-local-text。"
+    version = "0.1.5",
+    instructions = "用于访问 Lex Vault 当前工作空间中的本地能力；提供律师日历事项查询、创建、改期、取消、完成，以及周期日程规则预览和创建工具，也提供案件 graphify 知识库索引的状态查询、构建、检索和读取工具。当前还提供基于内置 helper 的 web_search 与 wechat_search 工具，分别用于公开网页检索和微信公众号公开文章检索；还提供 multimodal_understand 工具，用于理解本机图片、音频和视频文件内容。一次性提醒创建普通日历事项，重复提醒创建周期日程规则；分析案件材料时优先使用 graphify 工具读取材料索引，并先检查当前索引模式是否为 graphify-extract 还是 fallback-local-text。需要识别图片、截图、扫描件、照片、音频或视频内容时，优先使用 multimodal_understand，并通过 prompt 明确本次需要解析的重点。"
 )]
 impl ServerHandler for LocalMcpServer {}
 
@@ -1212,8 +1251,8 @@ mod tests {
         default_ai_event_reminders, normalize_ai_event_type, CalendarCreateEventArgs,
         CalendarCreateRecurringRuleArgs, CalendarEventStatusArg, CalendarEventTypeArg,
         CalendarPreviewRecurringRuleArgs, CalendarReminderArg, CalendarReminderChannelArg,
-        CalendarReminderOffsetArg, RecurringRuleStatusArg, WechatSearchArgs, WebSearchArgs,
-        LOCAL_MCP_BIND_HOST,
+        CalendarReminderOffsetArg, MultimodalUnderstandArgs, RecurringRuleStatusArg, WebSearchArgs,
+        WechatSearchArgs, LOCAL_MCP_BIND_HOST,
     };
     use crate::websearch_runtime::{
         DEFAULT_WEB_SEARCH_ENGINE, DEFAULT_WEB_SEARCH_LIMIT, DEFAULT_WEB_SEARCH_TIMEOUT_MS,
@@ -1355,6 +1394,34 @@ mod tests {
     #[test]
     fn wechat_search_engine_constant_is_stable() {
         assert_eq!(WECHAT_SEARCH_ENGINE, "sogou_weixin");
+    }
+
+    /// 验证多模态理解工具参数能接收视频控制项。
+    #[test]
+    fn multimodal_understand_args_accept_video_options() {
+        let args: MultimodalUnderstandArgs = serde_json::from_value(json!({
+            "path": "C:\\temp\\demo.mp4",
+            "prompt": "总结视频时间线",
+            "maxCompletionTokens": 2048,
+            "fps": 1.5,
+            "mediaResolution": "max"
+        }))
+        .expect("multimodal understand args should deserialize");
+
+        assert_eq!(args.prompt, "总结视频时间线");
+        assert_eq!(args.max_completion_tokens, Some(2048));
+        assert_eq!(args.fps, Some(1.5));
+        assert_eq!(args.media_resolution.as_deref(), Some("max"));
+    }
+
+    /// 验证多模态理解工具参数要求模型明确传入解析重点 prompt。
+    #[test]
+    fn multimodal_understand_args_require_prompt() {
+        let result = serde_json::from_value::<MultimodalUnderstandArgs>(json!({
+            "path": "C:\\temp\\demo.mp3"
+        }));
+
+        assert!(result.is_err());
     }
 
     /// 验证周期规则默认符合律师工作习惯：时区上海、状态激活、双通道提醒。

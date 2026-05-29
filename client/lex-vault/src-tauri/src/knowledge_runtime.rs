@@ -858,8 +858,11 @@ fn move_graphify_output_into_case_index(
     } else {
         None
     };
-    let publish_result =
-        move_directory_or_copy(built_root, &final_index_root, "清理临时 graphify 输出目录失败");
+    let publish_result = move_directory_or_copy(
+        built_root,
+        &final_index_root,
+        "清理临时 graphify 输出目录失败",
+    );
     match publish_result {
         Ok(()) => {
             if let Some(backup) = backup_root {
@@ -886,7 +889,11 @@ fn move_graphify_output_into_case_index(
     }
 }
 
-fn move_directory_or_copy(source: &Path, target: &Path, cleanup_title: &str) -> Result<(), AppError> {
+fn move_directory_or_copy(
+    source: &Path,
+    target: &Path,
+    cleanup_title: &str,
+) -> Result<(), AppError> {
     if !source.is_dir() {
         return Err(AppError::new(
             "KNOWLEDGE_RUNTIME_BUILD_FAILED",

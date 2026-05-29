@@ -35,6 +35,10 @@ use crate::knowledge_runtime::{
     build_case_graphify_index, case_graphify_status, read_case_graphify_index,
     search_case_graphify_index,
 };
+use crate::websearch_runtime::{
+    run_web_search, WebSearchRequest, DEFAULT_WEB_SEARCH_ENGINE, DEFAULT_WEB_SEARCH_LIMIT,
+    DEFAULT_WEB_SEARCH_TIMEOUT_MS, WECHAT_SEARCH_ENGINE,
+};
 
 /// 本地 MCP server 仅监听回环地址，避免暴露到局域网。
 const LOCAL_MCP_BIND_HOST: &str = "127.0.0.1";
@@ -423,6 +427,43 @@ struct CaseGraphifyReadArgs {
     path: Option<String>,
 }
 
+/// 网页检索工具参数。
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct WebSearchArgs {
+    /// 搜索关键字或问题。
+    query: String,
+    /// 返回结果条数，默认 5，最大 10。
+    #[serde(default = "default_web_search_limit")]
+    limit: u8,
+    /// 搜索引擎。当前默认使用 `sogou`。
+    #[serde(default = "default_web_search_engine")]
+    engine: String,
+    /// helper 超时毫秒数，默认 15000。
+    #[serde(default = "default_web_search_timeout_ms")]
+    timeout_ms: u64,
+    /// 是否继续访问前几条结果页，提取页面摘要。默认 false。
+    #[serde(default)]
+    include_page_summary: bool,
+}
+
+/// 微信文章检索工具参数。
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct WechatSearchArgs {
+    /// 搜索关键字或问题。
+    query: String,
+    /// 返回结果条数，默认 5，最大 10。
+    #[serde(default = "default_web_search_limit")]
+    limit: u8,
+    /// helper 超时毫秒数，默认 15000。
+    #[serde(default = "default_web_search_timeout_ms")]
+    timeout_ms: u64,
+    /// 是否继续访问前几条公众号文章页，提取页面摘要。默认 false。
+    #[serde(default)]
+    include_page_summary: bool,
+}
+
 /// MCP 工具中的提醒规则参数。
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(untagged)]
@@ -566,6 +607,18 @@ fn default_recurring_channels() -> Vec<CalendarReminderChannelArg> {
 
 fn default_graphify_search_limit() -> usize {
     5
+}
+
+fn default_web_search_limit() -> u8 {
+    DEFAULT_WEB_SEARCH_LIMIT
+}
+
+fn default_web_search_engine() -> String {
+    DEFAULT_WEB_SEARCH_ENGINE.to_string()
+}
+
+fn default_web_search_timeout_ms() -> u64 {
+    DEFAULT_WEB_SEARCH_TIMEOUT_MS
 }
 
 fn default_ai_event_reminders(
@@ -1059,12 +1112,49 @@ impl LocalMcpServer {
             .map_err(|err| self.internal_error("读取案件知识库内容失败", err.message))?;
         self.to_tool_text(result)
     }
+
+    /// 使用内置 helper 检索网页搜索结果，返回标题、链接和摘要。
+    #[tool(
+        name = "web_search",
+        description = "使用内置 helper 直接请求搜狗网页搜索结果并提取结构化结果，适用于联网检索公开网页信息。当前默认使用 sogou；返回 title、url、snippet，可选继续访问前几条结果页补充 pageSummary。"
+    )]
+    fn web_search(&self, Parameters(args): Parameters<WebSearchArgs>) -> Result<String, ErrorData> {
+        let result = run_web_search(WebSearchRequest {
+            query: args.query,
+            limit: args.limit,
+            engine: args.engine,
+            timeout_ms: args.timeout_ms,
+            include_page_summary: args.include_page_summary,
+        })
+        .map_err(|err| self.internal_error("执行网页检索失败", err.message))?;
+        self.to_tool_text(result)
+    }
+
+    /// 使用搜狗微信文章搜索检索公众号公开文章，返回标题、链接和摘要。
+    #[tool(
+        name = "wechat_search",
+        description = "使用内置 helper 直接请求搜狗微信文章搜索结果页并提取结构化结果，适用于联网检索微信公众号公开文章。返回 title、url、snippet、source、publishedAt，可选继续访问前几条文章页补充 pageSummary。"
+    )]
+    fn wechat_search(
+        &self,
+        Parameters(args): Parameters<WechatSearchArgs>,
+    ) -> Result<String, ErrorData> {
+        let result = run_web_search(WebSearchRequest {
+            query: args.query,
+            limit: args.limit,
+            engine: WECHAT_SEARCH_ENGINE.to_string(),
+            timeout_ms: args.timeout_ms,
+            include_page_summary: args.include_page_summary,
+        })
+        .map_err(|err| self.internal_error("执行微信文章检索失败", err.message))?;
+        self.to_tool_text(result)
+    }
 }
 
 #[tool_handler(
     name = "lex_vault_local",
-    version = "0.1.2",
-    instructions = "用于访问 Lex Vault 当前工作空间中的本地能力；提供律师日历事项查询、创建、改期、取消、完成，以及周期日程规则预览和创建工具，也提供案件 graphify 知识库索引的状态查询、构建、检索和读取工具。一次性提醒创建普通日历事项，重复提醒创建周期日程规则；分析案件材料时优先使用 graphify 工具读取材料索引，并先检查当前索引模式是否为 graphify-extract 还是 fallback-local-text。"
+    version = "0.1.3",
+    instructions = "用于访问 Lex Vault 当前工作空间中的本地能力；提供律师日历事项查询、创建、改期、取消、完成，以及周期日程规则预览和创建工具，也提供案件 graphify 知识库索引的状态查询、构建、检索和读取工具。当前还提供基于内置 helper 的 web_search 与 wechat_search 工具，分别用于公开网页检索和微信公众号公开文章检索。一次性提醒创建普通日历事项，重复提醒创建周期日程规则；分析案件材料时优先使用 graphify 工具读取材料索引，并先检查当前索引模式是否为 graphify-extract 还是 fallback-local-text。"
 )]
 impl ServerHandler for LocalMcpServer {}
 
@@ -1122,7 +1212,12 @@ mod tests {
         default_ai_event_reminders, normalize_ai_event_type, CalendarCreateEventArgs,
         CalendarCreateRecurringRuleArgs, CalendarEventStatusArg, CalendarEventTypeArg,
         CalendarPreviewRecurringRuleArgs, CalendarReminderArg, CalendarReminderChannelArg,
-        CalendarReminderOffsetArg, RecurringRuleStatusArg, LOCAL_MCP_BIND_HOST,
+        CalendarReminderOffsetArg, RecurringRuleStatusArg, WechatSearchArgs, WebSearchArgs,
+        LOCAL_MCP_BIND_HOST,
+    };
+    use crate::websearch_runtime::{
+        DEFAULT_WEB_SEARCH_ENGINE, DEFAULT_WEB_SEARCH_LIMIT, DEFAULT_WEB_SEARCH_TIMEOUT_MS,
+        WECHAT_SEARCH_ENGINE,
     };
     use serde_json::json;
 
@@ -1225,6 +1320,41 @@ mod tests {
         assert!(matches!(args.status, CalendarEventStatusArg::Scheduled));
         assert!(!args.all_day);
         assert_eq!(args.priority, 0);
+    }
+
+    /// 验证网页检索工具参数会自动补齐默认引擎、超时和结果数。
+    #[test]
+    fn web_search_args_apply_schema_defaults() {
+        let args: WebSearchArgs = serde_json::from_value(json!({
+            "query": "劳动仲裁 举证期限"
+        }))
+        .expect("web search args should deserialize");
+
+        assert_eq!(args.query, "劳动仲裁 举证期限");
+        assert_eq!(args.limit, DEFAULT_WEB_SEARCH_LIMIT);
+        assert_eq!(args.engine, DEFAULT_WEB_SEARCH_ENGINE);
+        assert_eq!(args.timeout_ms, DEFAULT_WEB_SEARCH_TIMEOUT_MS);
+        assert!(!args.include_page_summary);
+    }
+
+    /// 验证微信文章检索工具参数会自动补齐默认超时和结果数。
+    #[test]
+    fn wechat_search_args_apply_schema_defaults() {
+        let args: WechatSearchArgs = serde_json::from_value(json!({
+            "query": "离婚案件"
+        }))
+        .expect("wechat search args should deserialize");
+
+        assert_eq!(args.query, "离婚案件");
+        assert_eq!(args.limit, DEFAULT_WEB_SEARCH_LIMIT);
+        assert_eq!(args.timeout_ms, DEFAULT_WEB_SEARCH_TIMEOUT_MS);
+        assert!(!args.include_page_summary);
+    }
+
+    /// 验证微信文章检索使用固定搜狗微信引擎名。
+    #[test]
+    fn wechat_search_engine_constant_is_stable() {
+        assert_eq!(WECHAT_SEARCH_ENGINE, "sogou_weixin");
     }
 
     /// 验证周期规则默认符合律师工作习惯：时区上海、状态激活、双通道提醒。

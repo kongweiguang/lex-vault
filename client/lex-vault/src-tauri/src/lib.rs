@@ -16,6 +16,7 @@ mod notification_center;
 mod runtime_bundle;
 mod tray;
 mod update_manager;
+mod websearch_runtime;
 mod wechat_gateway_auth;
 mod window;
 

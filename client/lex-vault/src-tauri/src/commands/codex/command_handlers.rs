@@ -480,9 +480,13 @@ pub(crate) fn build_workspace_directory_developer_instructions(
             &format!("- <workspaceRoot>/master/ 是案件存储根目录，当前实际路径：{case_master}"),
             "当需要检索工作区内的代码、文书、法规、案例、日志、JSON、Markdown 或其他文本文件内容时，优先使用 rg 检索，不要默认逐个文件硬读。",
             "律隐台会把随包分发的工具目录前置到运行时 PATH；如需显式定位该目录，可读取环境变量 LEX_VAULT_TOOLS_DIR，Windows 内置检索工具位于该目录下的 rg.exe。",
+            "当当前任务需要下载、安装或更新 Python / Node.js 依赖时，优先使用国内镜像源，避免默认海外源过慢；除非用户明确指定其他源，Python 默认使用 https://pypi.tuna.tsinghua.edu.cn/simple，Node 默认使用 https://registry.npmmirror.com。",
+            "如果需要给出安装命令，请优先让 pip、uv、pipx、poetry、npm、pnpm、yarn、npx 等命令显式继承或使用上述镜像配置；如果现有命令已经自带 index-url 或 registry 参数，则保持用户或项目原有覆盖优先。",
             "当用户提到模板、法规、案例、案件目录或相关文件时，请优先结合以上目录语义理解，不要把这些内置目录名当作无意义路径片段。",
             "当用户要求基于案件材料梳理事实、证据、时间线、争议焦点、证明目的或材料检索时，优先使用 lex_vault_local 提供的 case_graphify_status / case_graphify_build / case_graphify_search / case_graphify_read 工具读取案件知识库索引。",
             "如果当前案件还没有 graphify 索引，或索引已经过期，请先构建索引再回答，不要默认逐个硬读大文件；优先使用 graphify-extract 模式结果，只有在 indexMode 显示 fallback-local-text 时才把它视为保底索引。",
+            "当用户需要联网搜索公开网页信息时，默认优先使用 lex_vault_local 提供的 web_search 工具；当用户明确要搜微信公众号文章、微信公开内容或搜狗微信结果时，默认优先使用 lex_vault_local 提供的 wechat_search 工具；当前运行时已通过顶层配置关闭模型或 provider 自带的 web search。",
+            "如果本地 web_search 或 wechat_search 当前不可用、报错或超时，应先说明本地网页检索链路异常，再决定是否重试；不要静默切换到其他内置 web search。",
         ]
         .join("\n"),
     )

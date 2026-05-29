@@ -192,19 +192,21 @@ fn lex_vault_model_config_batch_params_write_provider_and_app_version() {
     assert_eq!(edits[2]["value"], LEX_VAULT_MODEL_PROVIDER_ID);
     assert_eq!(edits[4]["keyPath"], "model_instructions_file");
     assert_eq!(edits[4]["value"], "C:\\agent\\.internal\\kongweiguang.md");
+    assert_eq!(edits[5]["keyPath"], "web_search");
+    assert_eq!(edits[5]["value"], "disabled");
     assert_eq!(
-        edits[5]["keyPath"],
+        edits[6]["keyPath"],
         format!("model_providers.{LEX_VAULT_MODEL_PROVIDER_ID}")
     );
     assert_eq!(
-        edits[5]["value"]["base_url"],
+        edits[6]["value"]["base_url"],
         lex_vault_runtime_model_base_url()
     );
-    assert_eq!(edits[5]["value"]["env_key"], LEX_VAULT_LAW_TOKEN_ENV);
-    assert_eq!(edits[5]["value"]["wire_api"], "responses");
-    assert_eq!(edits[5]["value"]["requires_openai_auth"], false);
+    assert_eq!(edits[6]["value"]["env_key"], LEX_VAULT_LAW_TOKEN_ENV);
+    assert_eq!(edits[6]["value"]["wire_api"], "responses");
+    assert_eq!(edits[6]["value"]["requires_openai_auth"], false);
     assert_eq!(
-        edits[5]["value"]["http_headers"]["clientid"],
+        edits[6]["value"]["http_headers"]["clientid"],
         lex_vault_runtime_law_admin_client_id()
     );
 }
@@ -220,6 +222,7 @@ fn lex_vault_model_config_requires_env_key_even_when_version_matches() {
             "model": lex_vault_runtime_default_model(),
             "model_provider": LEX_VAULT_MODEL_PROVIDER_ID,
             "model_instructions_file": "C:\\agent\\.internal\\kongweiguang.md",
+            "web_search": "disabled",
             "model_providers": {
                 LEX_VAULT_MODEL_PROVIDER_ID: {
                     "base_url": lex_vault_runtime_model_base_url(),
@@ -240,6 +243,7 @@ fn lex_vault_model_config_requires_env_key_even_when_version_matches() {
             "model": lex_vault_runtime_default_model(),
             "model_provider": LEX_VAULT_MODEL_PROVIDER_ID,
             "model_instructions_file": "C:\\agent\\.internal\\kongweiguang.md",
+            "web_search": "disabled",
             "model_providers": {
                 LEX_VAULT_MODEL_PROVIDER_ID: {
                     "base_url": lex_vault_runtime_model_base_url(),
@@ -260,6 +264,38 @@ fn lex_vault_model_config_requires_env_key_even_when_version_matches() {
     ));
     assert!(lex_vault_model_config_is_current(
         &current_with_env_key,
+        Path::new("C:\\agent\\.internal\\kongweiguang.md")
+    ));
+}
+
+/// 验证即使 provider 和版本都正确，只要顶层 web_search 不是 disabled 仍会重写配置。
+#[test]
+fn lex_vault_model_config_requires_top_level_web_search_disabled() {
+    let current_without_web_search_disabled = json!({
+        "config": {
+            "lex_vault": {
+                "app_version": LEX_VAULT_APP_VERSION
+            },
+            "model": lex_vault_runtime_default_model(),
+            "model_provider": LEX_VAULT_MODEL_PROVIDER_ID,
+            "model_instructions_file": "C:\\agent\\.internal\\kongweiguang.md",
+            "web_search": "cached",
+            "model_providers": {
+                LEX_VAULT_MODEL_PROVIDER_ID: {
+                    "base_url": lex_vault_runtime_model_base_url(),
+                    "env_key": LEX_VAULT_LAW_TOKEN_ENV,
+                    "wire_api": "responses",
+                    "requires_openai_auth": false,
+                    "http_headers": {
+                        "clientid": lex_vault_runtime_law_admin_client_id()
+                    }
+                }
+            }
+        }
+    });
+
+    assert!(!lex_vault_model_config_is_current(
+        &current_without_web_search_disabled,
         Path::new("C:\\agent\\.internal\\kongweiguang.md")
     ));
 }

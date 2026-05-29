@@ -20,6 +20,8 @@ pub const LEX_VAULT_LAW_TOKEN_ENV: &str = "LEX_VAULT_LAW_TOKEN";
 const LEX_VAULT_MODEL_REASONING_EFFORT: &str = "medium";
 const LEX_VAULT_CONFIG_SECTION: &str = "lex_vault";
 const LEX_VAULT_APP_VERSION_KEY: &str = "app_version";
+const CODEX_WEB_SEARCH_KEY_PATH: &str = "web_search";
+const CODEX_WEB_SEARCH_DISABLED: &str = "disabled";
 const CODEX_MEMORIES_FEATURE_KEY_PATH: &str = "features.memories";
 const DEV_ENV_FILE_NAMES: [&str; 2] = [".env.local", ".env.development.local"];
 pub const LEX_VAULT_APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -83,6 +85,11 @@ pub fn lex_vault_model_config_batch_params(model_instructions_file: &Path) -> Va
                 "mergeStrategy": "replace"
             },
             {
+                "keyPath": CODEX_WEB_SEARCH_KEY_PATH,
+                "value": CODEX_WEB_SEARCH_DISABLED,
+                "mergeStrategy": "replace"
+            },
+            {
                 "keyPath": format!("model_providers.{LEX_VAULT_MODEL_PROVIDER_ID}"),
                 "value": {
                     "name": "Lex Vault Law API",
@@ -119,6 +126,11 @@ pub fn lex_vault_model_config_is_current(response: &Value, model_instructions_fi
             .and_then(|config| config.get("model_instructions_file"))
             .and_then(Value::as_str)
             == Some(expected_model_instructions_file.as_str())
+        && response
+            .get("config")
+            .and_then(|config| config.get("web_search"))
+            .and_then(Value::as_str)
+            == Some(CODEX_WEB_SEARCH_DISABLED)
         && response
             .get("config")
             .and_then(|config| config.get("model_providers"))

@@ -44,6 +44,12 @@ fn workspace_directory_developer_instructions_use_app_config_paths() {
     assert!(instructions.contains("D:\\legal\\matters"));
     assert!(instructions.contains("优先使用 rg 检索"));
     assert!(instructions.contains("LEX_VAULT_TOOLS_DIR"));
+    assert!(instructions.contains("https://pypi.tuna.tsinghua.edu.cn/simple"));
+    assert!(instructions.contains("https://registry.npmmirror.com"));
+    assert!(instructions.contains("默认优先使用 lex_vault_local 提供的 web_search 工具"));
+    assert!(instructions.contains("默认优先使用 lex_vault_local 提供的 wechat_search 工具"));
+    assert!(instructions.contains("当前运行时已通过顶层配置关闭模型或 provider 自带的 web search"));
+    assert!(instructions.contains("不要静默切换到其他内置 web search"));
 }
 
 /// 验证已有 instructions 会与工作区目录说明合并。
@@ -1078,6 +1084,33 @@ fn tauri_bundle_resources_include_wechat_directory() {
     assert!(
         has_wechat_resources,
         "tauri bundle resources should include resources/wechat so installers can ship the wechat helper and its bundled npm dependencies"
+    );
+}
+
+/// 验证安装包配置会把网页检索 helper 资源目录一起打进客户端，避免客户机缺失 Playwright helper 脚本。
+#[test]
+fn tauri_bundle_resources_include_websearch_directory() {
+    let tauri_config_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+    let raw = std::fs::read_to_string(&tauri_config_path).expect("tauri config should be readable");
+    let config: Value = serde_json::from_str(&raw).expect("tauri config should be valid json");
+    let resources = config
+        .get("bundle")
+        .and_then(|bundle| bundle.get("resources"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let has_websearch_resources = resources.iter().any(|resource| {
+        resource
+            .as_str()
+            .map(|value| value == "resources/websearch")
+            .unwrap_or(false)
+    });
+
+    assert!(
+        has_websearch_resources,
+        "tauri bundle resources should include resources/websearch so installers can ship the web search helper"
     );
 }
 

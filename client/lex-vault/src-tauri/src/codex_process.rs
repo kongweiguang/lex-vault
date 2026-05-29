@@ -28,6 +28,12 @@ const LEX_VAULT_NODE_ENV: &str = "LEX_VAULT_NODE";
 const LEX_VAULT_RUNTIME_ROOT_ENV: &str = "LEX_VAULT_RUNTIME_ROOT";
 /// app-server 与模型工具调用读取 Lex Vault 内置工具目录的环境变量名。
 const LEX_VAULT_TOOLS_DIR_ENV: &str = "LEX_VAULT_TOOLS_DIR";
+/// Python 依赖安装默认使用的国内镜像 simple index。
+const LEX_VAULT_PYTHON_MIRROR_INDEX_URL: &str = "https://pypi.tuna.tsinghua.edu.cn/simple";
+/// Python 国内镜像 host，供 pip trusted-host 等场景复用。
+const LEX_VAULT_PYTHON_MIRROR_HOST: &str = "pypi.tuna.tsinghua.edu.cn";
+/// Node 依赖安装默认使用的国内 registry。
+const LEX_VAULT_NODE_MIRROR_REGISTRY: &str = "https://registry.npmmirror.com";
 /// 当前工作空间根目录，供本地插件定位业务目录。
 const LEX_VAULT_WORKSPACE_ROOT_ENV: &str = "LEX_VAULT_WORKSPACE_ROOT";
 /// 当前工作空间级 SQLite 数据库路径，供本地插件直接访问。
@@ -325,6 +331,30 @@ fn build_runtime_environment(runtime: &BuiltinRuntimeConfig) -> Vec<(String, Str
     environment.push((
         LEX_VAULT_RUNTIME_ROOT_ENV.to_string(),
         runtime.runtime_root.clone(),
+    ));
+    environment.push((
+        "PIP_INDEX_URL".to_string(),
+        LEX_VAULT_PYTHON_MIRROR_INDEX_URL.to_string(),
+    ));
+    environment.push((
+        "PIP_TRUSTED_HOST".to_string(),
+        LEX_VAULT_PYTHON_MIRROR_HOST.to_string(),
+    ));
+    environment.push((
+        "UV_DEFAULT_INDEX".to_string(),
+        LEX_VAULT_PYTHON_MIRROR_INDEX_URL.to_string(),
+    ));
+    environment.push((
+        "npm_config_registry".to_string(),
+        LEX_VAULT_NODE_MIRROR_REGISTRY.to_string(),
+    ));
+    environment.push((
+        "NPM_CONFIG_REGISTRY".to_string(),
+        LEX_VAULT_NODE_MIRROR_REGISTRY.to_string(),
+    ));
+    environment.push((
+        "YARN_NPM_REGISTRY_SERVER".to_string(),
+        LEX_VAULT_NODE_MIRROR_REGISTRY.to_string(),
     ));
     if let Some(tools_directory) = runtime.tools_directory.as_ref() {
         environment.push((LEX_VAULT_TOOLS_DIR_ENV.to_string(), tools_directory.clone()));

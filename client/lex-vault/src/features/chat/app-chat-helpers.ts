@@ -1,3 +1,4 @@
+/** @author kongweiguang */
 import type { CodexThreadRecord, CodexToolCallInfo, CodexToolCallResult } from "@/types/codex";
 import type {
   ChatAttachment,
@@ -21,10 +22,13 @@ export function appendAssistantDelta(
   if (targetIndex >= 0) {
     return messages.map((message, index) =>
       index === targetIndex
-        ? {
-            ...message,
-            ...withAssistantTextDelta(removeLiveProcessTextByItemId(message, itemId), turnId, itemId, text),
-          }
+        ? recoverAssistantMessage(
+            {
+              ...message,
+              ...withAssistantTextDelta(removeLiveProcessTextByItemId(message, itemId), turnId, itemId, text),
+            },
+            true,
+          )
         : message,
     );
   }
@@ -79,19 +83,19 @@ export function completeAssistantMessage(
 
   return cleanedMessages.map((message, index) =>
     index === targetIndex
-      ? (() => {
+        ? (() => {
           const cleanedMessage = removeLiveProcessTextByItemId(message, itemId);
           const nextSegments = finalText
             ? completeAssistantTextSegments(existingAssistantTextSegments(cleanedMessage), turnId, itemId, finalText)
             : existingAssistantTextSegments(cleanedMessage);
-          return {
+          return recoverAssistantMessage({
             ...cleanedMessage,
             assistantTextSegments: nextSegments,
             content: nextSegments?.length ? joinAssistantTextSegments(nextSegments) : content,
             processMeta: hasAssistantProcess(cleanedMessage)
               ? completeProcessMeta(cleanedMessage, completedAt)
               : cleanedMessage.processMeta,
-          };
+          }, Boolean(nextSegments.length || finalText));
         })()
       : message,
   );
@@ -592,7 +596,7 @@ function withAssistantTextDelta(
   itemId: string | undefined,
   text: string,
 ) {
-  const nextSegments = appendAssistantTextSegments(existingAssistantTextSegments(message), turnId, itemId, text);
+  const nextSegments = appendAssistantTextSegments(recoverableAssistantTextSegments(message), turnId, itemId, text);
   return {
     assistantTextSegments: nextSegments,
     content: joinAssistantTextSegments(nextSegments),
@@ -679,6 +683,25 @@ function existingAssistantTextSegments(message: ChatMessage) {
     ];
   }
   return [];
+}
+
+/** 错误态恢复时，只继承真正的 assistant 正文，不把失败提示当成正文继续拼接。 */
+function recoverableAssistantTextSegments(message: ChatMessage) {
+  if (message.assistantTextSegments?.length) {
+    return normalizeAssistantTextSegments(message.assistantTextSegments);
+  }
+  return message.role === "error" ? [] : existingAssistantTextSegments(message);
+}
+
+/** 一旦已经拿到新的 assistant 正文，就撤掉整条消息的整体失败态，仅保留过程区里的工具失败。 */
+function recoverAssistantMessage(message: ChatMessage, recovered: boolean): ChatMessage {
+  if (!recovered || message.role !== "error") {
+    return message;
+  }
+  return {
+    ...message,
+    role: "assistant",
+  };
 }
 
 /** 统一生成正文片段 ID；缺失 itemId 时回退到 turn 级别，保持旧协议可用。 */

@@ -2,7 +2,7 @@
 //!
 //! @author kongweiguang
 
-use crate::{commands, local_mcp_server, tray, update_manager, window};
+use crate::{commands, local_mcp_server, tray, update_manager, websearch_runtime, window};
 use tauri::{Manager, RunEvent};
 
 /// 启动 Tauri 应用，并保持所有对外命令名称稳定。
@@ -48,6 +48,7 @@ pub fn run() {
             window::initialize_main_window(app);
             commands::wechat::spawn_wechat_auto_resume(app.handle().clone());
             update_manager::spawn_silent_update_check(app.handle().clone());
+            websearch_runtime::spawn_silent_websearch_browser_prepare(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

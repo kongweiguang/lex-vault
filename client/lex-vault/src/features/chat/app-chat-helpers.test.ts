@@ -1,3 +1,4 @@
+/** @author kongweiguang */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -222,10 +223,24 @@ describe("app-chat-helpers", () => {
     );
 
     expect(recovered).toHaveLength(1);
-    expect(recovered[0]?.role).toBe("error");
+    expect(recovered[0]?.role).toBe("assistant");
     expect(recovered[0]?.content).toContain("运行环境恢复后已经处理完成。");
     expect(recovered[0]?.content).not.toContain("当前回复未完成：桌面端运行环境还没准备好，请稍后再试。");
     expect(recovered[0]?.processItems?.map((item: ChatProcessItem) => item.type)).toEqual(["text"]);
+  });
+
+  it("drops the top-level error state once a failed frame receives late assistant text", () => {
+    const failed = upsertAssistantFailure([], "turn_recover_delta", "桌面端运行环境还没准备好，请稍后再试。");
+    const recovered = appendAssistantDelta(
+      failed,
+      "turn_recover_delta",
+      "msg_recover_delta",
+      "现在改为继续输出最终结论。",
+    );
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]?.role).toBe("assistant");
+    expect(recovered[0]?.content).toBe("现在改为继续输出最终结论。");
   });
 
   it("prefers final_answer and keeps phase-missing agent messages inside the process area", () => {
